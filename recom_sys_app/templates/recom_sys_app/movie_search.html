@@ -87,6 +87,8 @@
       margin-bottom: 40px;
       flex-wrap: wrap;
       gap: 20px;
+      position: relative;
+      z-index: 100;
     }
 
     .logo-section {
@@ -134,6 +136,174 @@
     .btn-back:hover {
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Global Search Bar Styles */
+    .global-search-container {
+      position: relative;
+      flex: 1;
+      max-width: 400px;
+      margin: 0 20px;
+      z-index: 9999;
+    }
+
+    .global-search-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .global-search-input {
+      width: 100%;
+      padding: 12px 16px 12px 42px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      font-size: 0.95rem;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      transition: all 0.3s ease;
+    }
+
+    .global-search-input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .global-search-input:focus {
+      outline: none;
+      border-color: #E50914;
+      background: rgba(0, 0, 0, 0.8);
+      box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.15);
+    }
+
+    .global-search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1rem;
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .global-search-spinner {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(229, 9, 20, 0.3);
+      border-top-color: #E50914;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+
+    .global-search-spinner.active {
+      display: block;
+    }
+
+    /* Autocomplete Dropdown */
+    .autocomplete-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: rgba(15, 15, 15, 0.99);
+      border: 2px solid rgba(229, 9, 20, 0.4);
+      border-radius: 10px;
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.95);
+      backdrop-filter: blur(20px);
+      max-height: 400px;
+      overflow-y: auto;
+      z-index: 9999;
+      display: none;
+      animation: dropdownFadeIn 0.2s ease;
+    }
+
+    .autocomplete-dropdown.active {
+      display: block;
+    }
+
+    @keyframes dropdownFadeIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .autocomplete-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover, .autocomplete-item.selected { background: rgba(229, 9, 20, 0.15); }
+    .autocomplete-item:first-child { border-radius: 10px 10px 0 0; }
+    .autocomplete-item:last-child { border-radius: 0 0 10px 10px; }
+    .autocomplete-item:only-child { border-radius: 10px; }
+
+    .autocomplete-poster {
+      width: 40px;
+      height: 60px;
+      border-radius: 5px;
+      object-fit: cover;
+      background: rgba(229, 9, 20, 0.2);
+      flex-shrink: 0;
+    }
+
+    .autocomplete-poster-placeholder {
+      width: 40px;
+      height: 60px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, rgba(229, 9, 20, 0.3), rgba(0, 0, 0, 0.5));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.2rem;
+    }
+
+    .autocomplete-info { flex: 1; min-width: 0; }
+
+    .autocomplete-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: white;
+      margin-bottom: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .autocomplete-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.8rem;
+      color: #999;
+    }
+
+    .autocomplete-year { color: #E50914; font-weight: 600; }
+    .autocomplete-rating { display: flex; align-items: center; gap: 3px; }
+    .autocomplete-rating-star { color: #ffd700; }
+
+    .autocomplete-no-results {
+      padding: 25px 16px;
+      text-align: center;
+      color: #999;
+    }
+
+    @media (max-width: 768px) {
+      .global-search-container {
+        max-width: none;
+        margin: 10px 0;
+        order: 3;
+        width: 100%;
+      }
     }
 
     /* Page Title */
@@ -416,6 +586,26 @@
         </div>
         <div class="logo-text">CineMatch</div>
       </div>
+      
+      <!-- Global Search Bar -->
+      <div class="global-search-container">
+        <div class="global-search-wrapper">
+          <span class="global-search-icon">🔍</span>
+          <input 
+            type="text" 
+            class="global-search-input" 
+            id="globalSearchInput"
+            placeholder="Quick search movies..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <div class="global-search-spinner" id="searchSpinner"></div>
+        </div>
+        <div class="autocomplete-dropdown" id="autocompleteDropdown">
+          <div id="autocompleteResults"></div>
+        </div>
+      </div>
+      
       <a href="{% url 'recom_sys:profile' %}" class="btn-back">← Back to Profile</a>
     </div>
 
@@ -490,6 +680,187 @@
       }
       return cookieValue;
     }
+
+    // ==================== GLOBAL SEARCH BAR AUTOCOMPLETE ====================
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    const autocompleteDropdown = document.getElementById('autocompleteDropdown');
+    const autocompleteResults = document.getElementById('autocompleteResults');
+    const searchSpinnerGlobal = document.getElementById('searchSpinner');
+    
+    let debounceTimerGlobal = null;
+    let currentQueryGlobal = '';
+    let selectedIndexGlobal = -1;
+    let currentResultsGlobal = [];
+    let abortControllerGlobal = null;
+    
+    function debounceGlobalSearch(query, delay = 250) {
+      clearTimeout(debounceTimerGlobal);
+      if (abortControllerGlobal) abortControllerGlobal.abort();
+      
+      if (!query || query.length < 2) {
+        hideAutocomplete();
+        return;
+      }
+      
+      showGlobalSpinner();
+      debounceTimerGlobal = setTimeout(() => performGlobalSearch(query), delay);
+    }
+    
+    async function performGlobalSearch(query) {
+      currentQueryGlobal = query;
+      abortControllerGlobal = new AbortController();
+      
+      try {
+        const response = await fetch(`/api/search/autocomplete/?q=${encodeURIComponent(query)}&limit=6`, {
+          signal: abortControllerGlobal.signal,
+        });
+        
+        if (!response.ok) throw new Error('Search failed');
+        const data = await response.json();
+        
+        if (data.success && query === currentQueryGlobal) {
+          currentResultsGlobal = data.results;
+          selectedIndexGlobal = -1;
+          renderAutocomplete(data.results, query);
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          autocompleteResults.innerHTML = '<div class="autocomplete-no-results">Search error. Try again.</div>';
+          showAutocomplete();
+        }
+      } finally {
+        hideGlobalSpinner();
+      }
+    }
+    
+    function renderAutocomplete(results, query) {
+      if (!results || results.length === 0) {
+        autocompleteResults.innerHTML = `<div class="autocomplete-no-results">No movies found for "${query}"</div>`;
+        showAutocomplete();
+        return;
+      }
+      
+      let html = '';
+      results.forEach((movie, index) => {
+        const posterHtml = movie.poster_url
+          ? `<img src="${movie.poster_url}" alt="${movie.title}" class="autocomplete-poster" loading="lazy">`
+          : `<div class="autocomplete-poster-placeholder">🎬</div>`;
+        
+        const ratingHtml = movie.vote_average > 0
+          ? `<span class="autocomplete-rating"><span class="autocomplete-rating-star">★</span> ${movie.vote_average}</span>`
+          : '';
+        
+        html += `
+          <div class="autocomplete-item" data-index="${index}" data-tmdb-id="${movie.tmdb_id}" data-title="${movie.title}" data-poster="${movie.poster_url || ''}" data-year="${movie.year || ''}">
+            ${posterHtml}
+            <div class="autocomplete-info">
+              <div class="autocomplete-title">${highlightMatchGlobal(movie.title, query)}</div>
+              <div class="autocomplete-meta">
+                ${movie.year ? `<span class="autocomplete-year">${movie.year}</span>` : ''}
+                ${ratingHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      autocompleteResults.innerHTML = html;
+      showAutocomplete();
+      
+      document.querySelectorAll('#autocompleteResults .autocomplete-item').forEach(item => {
+        item.addEventListener('click', () => selectFromAutocomplete(item));
+      });
+    }
+    
+    function highlightMatchGlobal(text, query) {
+      if (!query) return text;
+      const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      return text.replace(regex, '<strong style="color: #E50914;">$1</strong>');
+    }
+    
+    function selectFromAutocomplete(item) {
+      const tmdbId = item.dataset.tmdbId;
+      const title = item.dataset.title;
+      const posterUrl = item.dataset.poster;
+      const year = item.dataset.year;
+      
+      // Fill the main search input and trigger search
+      document.getElementById('searchInput').value = title;
+      hideAutocomplete();
+      globalSearchInput.value = '';
+      
+      // Directly load similar movies for this selection
+      loadSimilarMoviesDirectly(tmdbId, title, posterUrl, year);
+    }
+    
+    async function loadSimilarMoviesDirectly(tmdbId, title, posterUrl, year) {
+      selectedMovieId = tmdbId;
+      selectedMovieData = { tmdb_id: tmdbId, title, poster_path: posterUrl ? posterUrl.replace('https://image.tmdb.org/t/p/w500', '') : null, year };
+      
+      // Show selected movie
+      showSelectedMovie(selectedMovieData);
+      
+      // Fetch similar movies
+      await fetchAndDisplaySimilarMovies(selectedMovieData);
+    }
+    
+    function showAutocomplete() { autocompleteDropdown.classList.add('active'); }
+    function hideAutocomplete() { autocompleteDropdown.classList.remove('active'); selectedIndexGlobal = -1; }
+    function showGlobalSpinner() { searchSpinnerGlobal.classList.add('active'); }
+    function hideGlobalSpinner() { searchSpinnerGlobal.classList.remove('active'); }
+    
+    globalSearchInput.addEventListener('input', (e) => debounceGlobalSearch(e.target.value.trim()));
+    
+    globalSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const items = document.querySelectorAll('#autocompleteResults .autocomplete-item');
+        
+        // If an item is selected, use that
+        if (selectedIndexGlobal >= 0 && items[selectedIndexGlobal]) {
+          selectFromAutocomplete(items[selectedIndexGlobal]);
+        }
+        // If no item selected but we have results, auto-select the first one
+        else if (currentResultsGlobal.length > 0 && items.length > 0) {
+          selectFromAutocomplete(items[0]);
+        }
+        return;
+      }
+      
+      if (!autocompleteDropdown.classList.contains('active')) return;
+      
+      const items = document.querySelectorAll('#autocompleteResults .autocomplete-item');
+      
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedIndexGlobal = Math.min(selectedIndexGlobal + 1, items.length - 1);
+        updateAutocompleteSelection(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedIndexGlobal = Math.max(selectedIndexGlobal - 1, -1);
+        updateAutocompleteSelection(items);
+      } else if (e.key === 'Escape') {
+        hideAutocomplete();
+        globalSearchInput.blur();
+      }
+    });
+    
+    function updateAutocompleteSelection(items) {
+      items.forEach((item, index) => item.classList.toggle('selected', index === selectedIndexGlobal));
+      if (selectedIndexGlobal >= 0 && items[selectedIndexGlobal]) {
+        items[selectedIndexGlobal].scrollIntoView({ block: 'nearest' });
+      }
+    }
+    
+    globalSearchInput.addEventListener('focus', () => {
+      if (currentResultsGlobal.length > 0) showAutocomplete();
+    });
+    
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.global-search-container')) hideAutocomplete();
+    });
+    
+    // ==================== END GLOBAL SEARCH BAR ====================
 
     // Show message
     function showMessage(text, type = 'info') {
@@ -657,6 +1028,29 @@
 
       similarSection.innerHTML = html;
     }
+    
+    // ==================== HANDLE URL PARAMS (from global search) ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const movieId = urlParams.get('movie');
+      const movieTitle = urlParams.get('title');
+      const searchQuery = urlParams.get('q');
+      
+      // If movie ID is provided (from global search autocomplete)
+      if (movieId && movieTitle) {
+        // Set the search input value
+        document.getElementById('searchInput').value = movieTitle;
+        
+        // Load similar movies directly
+        loadSimilarMoviesDirectly(movieId, movieTitle, null, null);
+      }
+      // If just a search query is provided
+      else if (searchQuery) {
+        document.getElementById('searchInput').value = searchQuery;
+        // Trigger the search form
+        document.getElementById('searchForm').dispatchEvent(new Event('submit'));
+      }
+    });
   </script>
 </body>
 </html>
