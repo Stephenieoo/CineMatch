@@ -1263,6 +1263,90 @@ def search_movies_api(request):
 
 @login_required
 @require_http_methods(["GET"])
+def autocomplete_movies_api(request):
+    """
+    Lightweight API endpoint for Algolia-style movie autocomplete.
+    Returns multiple relevant movie suggestions as user types.
+
+    Query params:
+        q: Search query string (required)
+        limit: Max results to return (default: 8)
+    """
+    query = request.GET.get("q", "").strip()
+
+    if not query or len(query) < 2:
+        return JsonResponse({"success": True, "results": [], "count": 0})
+
+    try:
+        limit = min(int(request.GET.get("limit", 8)), 15)  # Cap at 15
+    except (ValueError, TypeError):
+        limit = 8
+
+    try:
+        if not TMDB_TOKEN:
+            return JsonResponse(
+                {"success": False, "message": "TMDB API not configured"}, status=500
+            )
+
+        # Use TMDB search API for fast autocomplete
+        r = requests.get(
+            f"{TMDB_BASE}/search/movie",
+            params={
+                "query": query,
+                "include_adult": "False",
+                "language": "en-US",
+                "page": 1,
+            },
+            headers=TMDB_HEADERS,
+            timeout=5,  # Short timeout for autocomplete
+        )
+        r.raise_for_status()
+
+        results = r.json().get("results", [])
+
+        # Format results for autocomplete dropdown
+        formatted_results = []
+        for movie in results[:limit]:
+            release_date = movie.get("release_date", "")
+            year = release_date[:4] if release_date else ""
+
+            formatted_results.append(
+                {
+                    "tmdb_id": movie.get("id"),
+                    "title": movie.get("title"),
+                    "year": year,
+                    "vote_average": round(movie.get("vote_average", 0), 1),
+                    "poster_path": movie.get("poster_path"),
+                    "poster_url": (
+                        f"{IMG_BASE}{movie['poster_path']}"
+                        if movie.get("poster_path")
+                        else None
+                    ),
+                }
+            )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "query": query,
+                "count": len(formatted_results),
+                "results": formatted_results,
+            }
+        )
+
+    except requests.Timeout:
+        return JsonResponse({"success": False, "message": "Search timeout"}, status=504)
+    except requests.HTTPError as e:
+        return JsonResponse(
+            {"success": False, "message": f"TMDB API error: {e.response.status_code}"},
+            status=502,
+        )
+    except Exception as e:
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
 def get_similar_movies_api(request, tmdb_id):
     """
     API endpoint to get similar movies for a given movie ID

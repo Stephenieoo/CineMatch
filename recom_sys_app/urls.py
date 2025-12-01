@@ -108,6 +108,11 @@ urlpatterns = [
     path("search/", views.movie_search_view, name="movie_search"),
     path("api/search/movies/", views.search_movies_api, name="api_search_movies"),
     path(
+        "api/search/autocomplete/",
+        views.autocomplete_movies_api,
+        name="api_autocomplete_movies",
+    ),
+    path(
         "api/movies/<int:tmdb_id>/similar/",
         views.get_similar_movies_api,
         name="api_similar_movies",

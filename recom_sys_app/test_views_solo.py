@@ -1028,7 +1028,7 @@ class GetWatchedViewTest(TestCase):
         self.client.login(username="testuser", password="testpass123")
 
         # Create watched interactions at different times
-        from datetime import datetime, timedelta
+        from datetime import timedelta
         from django.utils import timezone
 
         old_time = timezone.now() - timedelta(days=30)

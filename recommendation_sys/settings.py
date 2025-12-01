@@ -189,8 +189,12 @@ STATIC_URL = "static/"
 # Tell Django where to find static files (for development debugging)
 STATICFILES_DIRS = [
     BASE_DIR / "recom_sys_app" / "static",
-    BASE_DIR / "frontend" / "dist",  # React build directory
 ]
+# Only include frontend/dist if it exists (React build directory)
+_frontend_dist = BASE_DIR / "frontend" / "dist"
+if _frontend_dist.exists():
+    STATICFILES_DIRS.append(_frontend_dist)
+
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 # Default primary key field type
