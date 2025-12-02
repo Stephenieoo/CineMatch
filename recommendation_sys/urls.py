@@ -47,3 +47,5 @@ if settings.DEBUG:
         settings.STATIC_URL,
         document_root=os.path.join(settings.BASE_DIR, "recom_sys_app", "static"),
     )
+    # Serve media files in development
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

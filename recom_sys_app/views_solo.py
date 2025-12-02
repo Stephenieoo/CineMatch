@@ -222,8 +222,8 @@ def get_solo_deck(request):
         except ValueError:
             limit = 20
 
-        # Get movies from TMDB based on selected genres
-        movies = _fetch_movies_by_genres(selected_genres, limit)
+        # Get movies from TMDB based on selected genres (with personalized recommendations)
+        movies = _fetch_movies_by_genres(selected_genres, limit, user=request.user)
 
         # Filter out movies the user has already swiped on
         swiped_ids = set(
@@ -256,7 +256,7 @@ def solo_swipe(request):
     Request Body:
         {
             "tmdb_id": 123,
-            "action": "like",  // or "dislike", "watch_later", "watched"
+            "action": "like",  // like, dislike, watch_later, watched, watched_liked, watched_disliked
             "movie_title": "Movie Name"
         }
 
@@ -271,7 +271,7 @@ def solo_swipe(request):
     try:
         data = json.loads(request.body)
         tmdb_id = data.get("tmdb_id")
-        action = data.get("action")  # 'like', 'dislike', 'watch_later', or 'watched'
+        action = data.get("action")
         movie_title = data.get("movie_title", "")
 
         # Validate required fields
@@ -281,8 +281,15 @@ def solo_swipe(request):
                 status=400,
             )
 
-        # Validate action value
-        valid_actions = ["like", "dislike", "watch_later", "watched"]
+        # Validate action value - now includes watched_liked and watched_disliked
+        valid_actions = [
+            "like",
+            "dislike",
+            "watch_later",
+            "watched",
+            "watched_liked",
+            "watched_disliked",
+        ]
         if action not in valid_actions:
             return JsonResponse(
                 {
@@ -321,6 +328,8 @@ def solo_swipe(request):
             "dislike": f"Passed on {movie_title}",
             "watch_later": f"Added {movie_title} to Watch Later",
             "watched": f"Marked {movie_title} as Watched",
+            "watched_liked": f"Marked {movie_title} as watched and liked",
+            "watched_disliked": f"Marked {movie_title} as watched but didn't like",
         }
 
         response_data = {
@@ -344,7 +353,7 @@ def solo_swipe(request):
 @require_http_methods(["DELETE"])
 def unlike_movie(request, tmdb_id):
     """
-    API endpoint to remove a movie from user's liked movies
+    API endpoint to remove a movie from user's liked movies (LIKE or WATCHED_LIKED)
     DELETE /api/solo/unlike/<tmdb_id>/
 
     Response:
@@ -355,9 +364,9 @@ def unlike_movie(request, tmdb_id):
         }
     """
     try:
-        # Find the interaction for this movie
+        # Find the interaction for this movie (either LIKE or WATCHED_LIKED)
         interaction = Interaction.objects.filter(
-            user=request.user, tmdb_id=tmdb_id, status="LIKE"
+            user=request.user, tmdb_id=tmdb_id, status__in=["LIKE", "WATCHED_LIKED"]
         ).first()
 
         if not interaction:
@@ -398,23 +407,36 @@ def get_solo_likes(request):
     Response:
         {
             "success": true,
-            "movies": [...],
+            "movies": [...],  # Each movie includes action_type: 'like' or 'watched_liked'
             "total": 10
         }
     """
     try:
-        # Get all liked interactions for this user
+        # Get all LIKE and WATCHED_LIKED interactions for this user
         liked_interactions = Interaction.objects.filter(
-            user=request.user, status="LIKE"
+            user=request.user, status__in=["LIKE", "WATCHED_LIKED"]
         ).order_by("-updated_at")[
-            :50
-        ]  # Get last 50 likes
+            :100
+        ]  # Get last 100 likes
+
+        # Build a map of tmdb_id to action_type
+        action_map = {}
+        for interaction in liked_interactions:
+            # Map status to action_type for frontend
+            action_type = "watched_liked" if interaction.status == "WATCHED_LIKED" else "like"
+            action_map[interaction.tmdb_id] = action_type
 
         # Get unique tmdb_ids
-        tmdb_ids = list(set(liked_interactions.values_list("tmdb_id", flat=True)))
+        tmdb_ids = list(action_map.keys())
 
         # Fetch details from TMDB
         movies = _tmdb_fetch_by_ids(tmdb_ids)
+
+        # Add action_type to each movie
+        for movie in movies:
+            tmdb_id = movie.get("tmdb_id")
+            if tmdb_id in action_map:
+                movie["action_type"] = action_map[tmdb_id]
 
         return JsonResponse({"success": True, "movies": movies, "total": len(movies)})
 
@@ -504,13 +526,14 @@ def get_watched(request):
 # ============================================
 
 
-def _fetch_movies_by_genres(genre_ids: list, limit: int = 20) -> list:
+def _fetch_movies_by_genres(genre_ids: list, limit: int = 20, user=None) -> list:
     """
-    Fetch movies from TMDB based on selected genres
+    Fetch movies from TMDB based on selected genres with improved recommendations
 
     Args:
         genre_ids: List of TMDB genre IDs
         limit: Maximum number of movies to return
+        user: User object for personalized recommendations
 
     Returns:
         List of movie dictionaries with metadata
@@ -519,11 +542,52 @@ def _fetch_movies_by_genres(genre_ids: list, limit: int = 20) -> list:
         raise RuntimeError("TMDB_TOKEN missing in .env")
 
     movies = []
-    pages_to_fetch = min(3, (limit // 20) + 1)  # Fetch multiple pages if needed
+    seen_ids = set()
+    # Fetch more pages for variety (5 pages = ~100 movies before filtering)
+    pages_to_fetch = min(5, (limit // 20) + 2)
 
     # Convert genre_ids to pipe-separated string (OR logic for TMDB API)
     genre_string = "|".join(str(g) for g in genre_ids)
 
+    # First, try to get personalized recommendations based on liked movies
+    if user:
+        try:
+            # Get recently liked and watched_liked movies for personalized recommendations
+            liked_movies = list(
+                Interaction.objects.filter(
+                    user=user, status__in=["LIKE", "WATCHED_LIKED"]
+                )
+                .order_by("-updated_at")
+                .values_list("tmdb_id", flat=True)[:10]
+            )
+
+            # Fetch recommendations based on liked movies
+            for liked_id in liked_movies[:5]:  # Use top 5 liked movies
+                try:
+                    r = requests.get(
+                        f"{TMDB_BASE}/movie/{liked_id}/recommendations",
+                        params={"language": "en-US", "page": 1},
+                        headers=TMDB_HEADERS,
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    results = r.json().get("results", [])
+
+                    for movie in results[:4]:  # Take top 4 from each liked movie
+                        if movie.get("id") in seen_ids:
+                            continue
+                        seen_ids.add(movie.get("id"))
+                        movies.append(_build_movie_dict(movie))
+
+                        if len(movies) >= limit // 3:  # 1/3 from recommendations
+                            break
+                except Exception:
+                    continue
+
+        except Exception as e:
+            print(f"Error fetching personalized recommendations: {e}")
+
+    # Fetch discover movies by genre (the rest)
     for page in range(1, pages_to_fetch + 1):
         try:
             r = requests.get(
@@ -534,7 +598,7 @@ def _fetch_movies_by_genres(genre_ids: list, limit: int = 20) -> list:
                     "page": page,
                     "include_adult": "false",
                     "language": "en-US",
-                    "vote_count.gte": 100,  # Only movies with at least 100 votes
+                    "vote_count.gte": 50,  # Lower threshold for more variety
                 },
                 headers=TMDB_HEADERS,
                 timeout=10,
@@ -547,29 +611,11 @@ def _fetch_movies_by_genres(genre_ids: list, limit: int = 20) -> list:
                 if len(movies) >= limit:
                     break
 
-                # Build movie dict
-                movies.append(
-                    {
-                        "tmdb_id": movie.get("id"),
-                        "title": movie.get("title", ""),
-                        "year": (movie.get("release_date") or "")[:4],
-                        "overview": movie.get("overview", ""),
-                        "vote_average": movie.get("vote_average"),
-                        "vote_count": movie.get("vote_count"),
-                        "poster_url": (
-                            (IMG_BASE + movie["poster_path"])
-                            if movie.get("poster_path")
-                            else None
-                        ),
-                        "backdrop_url": (
-                            (IMG_BASE + movie["backdrop_path"])
-                            if movie.get("backdrop_path")
-                            else None
-                        ),
-                        "genres": [g for g in movie.get("genre_ids", [])],
-                        "popularity": movie.get("popularity"),
-                    }
-                )
+                if movie.get("id") in seen_ids:
+                    continue
+                seen_ids.add(movie.get("id"))
+
+                movies.append(_build_movie_dict(movie))
 
             if len(movies) >= limit:
                 break
@@ -578,7 +624,50 @@ def _fetch_movies_by_genres(genre_ids: list, limit: int = 20) -> list:
             print(f"Error fetching movies from TMDB: {e}")
             continue
 
+    # Also fetch trending movies for variety
+    if len(movies) < limit:
+        try:
+            r = requests.get(
+                f"{TMDB_BASE}/trending/movie/week",
+                params={"language": "en-US"},
+                headers=TMDB_HEADERS,
+                timeout=10,
+            )
+            r.raise_for_status()
+            results = r.json().get("results", [])
+
+            for movie in results:
+                if len(movies) >= limit:
+                    break
+                if movie.get("id") in seen_ids:
+                    continue
+                seen_ids.add(movie.get("id"))
+                movies.append(_build_movie_dict(movie))
+
+        except Exception as e:
+            print(f"Error fetching trending movies: {e}")
+
     return movies
+
+
+def _build_movie_dict(movie: dict) -> dict:
+    """Build a standardized movie dictionary from TMDB response"""
+    return {
+        "tmdb_id": movie.get("id"),
+        "title": movie.get("title", ""),
+        "year": (movie.get("release_date") or "")[:4],
+        "overview": movie.get("overview", ""),
+        "vote_average": movie.get("vote_average"),
+        "vote_count": movie.get("vote_count"),
+        "poster_url": (
+            (IMG_BASE + movie["poster_path"]) if movie.get("poster_path") else None
+        ),
+        "backdrop_url": (
+            (IMG_BASE + movie["backdrop_path"]) if movie.get("backdrop_path") else None
+        ),
+        "genres": [g for g in movie.get("genre_ids", [])],
+        "popularity": movie.get("popularity"),
+    }
 
 
 def _tmdb_fetch_by_ids(movie_ids: list) -> list:
