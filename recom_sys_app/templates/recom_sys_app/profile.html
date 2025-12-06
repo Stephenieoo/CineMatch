@@ -159,6 +159,112 @@
       transform: translateY(-2px);
     }
 
+    /* Region Selector Styles */
+    .region-selector {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .region-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      color: white;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .region-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(229, 9, 20, 0.4);
+    }
+
+    .region-flag {
+      font-size: 1.2rem;
+    }
+
+    .region-code {
+      font-weight: 600;
+      color: #E50914;
+    }
+
+    .region-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 280px;
+      max-height: 350px;
+      overflow-y: auto;
+      background: rgba(15, 15, 15, 0.98);
+      border: 2px solid rgba(229, 9, 20, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(20px);
+      z-index: 10000;
+      display: none;
+      animation: dropdownFadeIn 0.2s ease;
+    }
+
+    .region-dropdown.active {
+      display: block;
+    }
+
+    .region-dropdown-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-weight: 600;
+      color: #E50914;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .region-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .region-option:hover {
+      background: rgba(229, 9, 20, 0.15);
+    }
+
+    .region-option.selected {
+      background: rgba(229, 9, 20, 0.2);
+    }
+
+    .region-option-flag {
+      font-size: 1.3rem;
+    }
+
+    .region-option-name {
+      flex: 1;
+      color: white;
+      font-size: 0.95rem;
+    }
+
+    .region-option-code {
+      color: #888;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .region-option:last-child {
+      border-bottom: none;
+      border-radius: 0 0 12px 12px;
+    }
+
     /* Global Search Bar Styles */
     .global-search-container {
       position: relative;
@@ -1146,6 +1252,21 @@
       </div>
       
       <div class="header-actions">
+        <!-- Region Selector -->
+        <div class="region-selector" id="regionSelector">
+          <button class="region-btn" id="regionBtn" onclick="toggleRegionDropdown(event)">
+            <span class="region-flag" id="regionFlag">🌍</span>
+            <span class="region-code" id="regionCode">...</span>
+            <span style="opacity: 0.5;">▼</span>
+          </button>
+          <div class="region-dropdown" id="regionDropdown">
+            <div class="region-dropdown-header">Select Your Region</div>
+            <div id="regionOptions">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+
         <a href="{% url 'recom_sys:recommend' %}" class="btn btn-primary">
           Get Recommendations
         </a>
@@ -1929,6 +2050,113 @@
         debounceSearch(searchInput.value.trim(), 100);
       }, 0);
     });
+
+    // ============================================
+    // Region Selector
+    // ============================================
+
+    // Country code to flag emoji mapping
+    const countryFlags = {
+      'US': '🇺🇸', 'GB': '🇬🇧', 'CA': '🇨🇦', 'AU': '🇦🇺', 'DE': '🇩🇪',
+      'FR': '🇫🇷', 'ES': '🇪🇸', 'IT': '🇮🇹', 'JP': '🇯🇵', 'KR': '🇰🇷',
+      'BR': '🇧🇷', 'MX': '🇲🇽', 'IN': '🇮🇳', 'NL': '🇳🇱', 'SE': '🇸🇪',
+      'NO': '🇳🇴', 'DK': '🇩🇰', 'FI': '🇫🇮', 'PL': '🇵🇱', 'RU': '🇷🇺',
+      'AR': '🇦🇷', 'CL': '🇨🇱', 'CO': '🇨🇴', 'PE': '🇵🇪', 'AT': '🇦🇹',
+      'CH': '🇨🇭', 'BE': '🇧🇪', 'PT': '🇵🇹', 'IE': '🇮🇪', 'NZ': '🇳🇿',
+      'SG': '🇸🇬', 'MY': '🇲🇾', 'PH': '🇵🇭', 'TH': '🇹🇭', 'ID': '🇮🇩',
+      'VN': '🇻🇳', 'ZA': '🇿🇦', 'EG': '🇪🇬', 'NG': '🇳🇬', 'KE': '🇰🇪'
+    };
+
+    let currentRegion = null;
+    let availableRegions = [];
+
+    // Fetch user's region on page load
+    async function loadUserRegion() {
+      try {
+        const response = await fetch('/api/region/');
+        const data = await response.json();
+
+        if (data.success) {
+          currentRegion = data.region;
+          availableRegions = data.available_regions;
+          updateRegionDisplay();
+          renderRegionOptions();
+        }
+      } catch (error) {
+        console.error('Failed to load region:', error);
+        document.getElementById('regionCode').textContent = 'US';
+        document.getElementById('regionFlag').textContent = '🇺🇸';
+      }
+    }
+
+    function updateRegionDisplay() {
+      const flag = countryFlags[currentRegion.code] || '🌍';
+      document.getElementById('regionFlag').textContent = flag;
+      document.getElementById('regionCode').textContent = currentRegion.code;
+    }
+
+    function renderRegionOptions() {
+      const container = document.getElementById('regionOptions');
+      container.innerHTML = availableRegions.map(region => `
+        <div class="region-option ${region.code === currentRegion.code ? 'selected' : ''}"
+             onclick="selectRegion('${region.code}')">
+          <span class="region-option-flag">${countryFlags[region.code] || '🌍'}</span>
+          <span class="region-option-name">${region.name}</span>
+          <span class="region-option-code">${region.code}</span>
+        </div>
+      `).join('');
+    }
+
+    function toggleRegionDropdown(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('regionDropdown');
+      dropdown.classList.toggle('active');
+    }
+
+    async function selectRegion(code) {
+      try {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+
+        const response = await fetch('/api/region/set/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+          },
+          body: JSON.stringify({ region: code })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          currentRegion = data.region;
+          updateRegionDisplay();
+          renderRegionOptions();
+
+          // Close dropdown
+          document.getElementById('regionDropdown').classList.remove('active');
+
+          // Show brief confirmation
+          const btn = document.getElementById('regionBtn');
+          btn.style.borderColor = '#4CAF50';
+          setTimeout(() => {
+            btn.style.borderColor = '';
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('Failed to set region:', error);
+      }
+    }
+
+    // Close region dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#regionSelector')) {
+        document.getElementById('regionDropdown').classList.remove('active');
+      }
+    });
+
+    // Load region on page load
+    loadUserRegion();
 
   </script>
 </body>
