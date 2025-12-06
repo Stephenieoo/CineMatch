@@ -9,10 +9,46 @@ from django.core.cache import cache
 
 # ISO 3166-1 alpha-2 country codes supported by TMDB watch providers
 SUPPORTED_REGIONS = {
-    "US", "GB", "CA", "AU", "DE", "FR", "ES", "IT", "JP", "KR",
-    "BR", "MX", "IN", "NL", "SE", "NO", "DK", "FI", "PL", "RU",
-    "AR", "CL", "CO", "PE", "AT", "CH", "BE", "PT", "IE", "NZ",
-    "SG", "MY", "PH", "TH", "ID", "VN", "ZA", "EG", "NG", "KE",
+    "US",
+    "GB",
+    "CA",
+    "AU",
+    "DE",
+    "FR",
+    "ES",
+    "IT",
+    "JP",
+    "KR",
+    "BR",
+    "MX",
+    "IN",
+    "NL",
+    "SE",
+    "NO",
+    "DK",
+    "FI",
+    "PL",
+    "RU",
+    "AR",
+    "CL",
+    "CO",
+    "PE",
+    "AT",
+    "CH",
+    "BE",
+    "PT",
+    "IE",
+    "NZ",
+    "SG",
+    "MY",
+    "PH",
+    "TH",
+    "ID",
+    "VN",
+    "ZA",
+    "EG",
+    "NG",
+    "KE",
 }
 
 # Default region if geolocation fails
@@ -34,13 +70,13 @@ def get_client_ip(request):
         str: Client IP address
     """
     # Check for forwarded IP (behind load balancer/proxy)
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if x_forwarded_for:
         # X-Forwarded-For can contain multiple IPs; first one is the client
-        ip = x_forwarded_for.split(',')[0].strip()
+        ip = x_forwarded_for.split(",")[0].strip()
     else:
         # Direct connection
-        ip = request.META.get('REMOTE_ADDR', '')
+        ip = request.META.get("REMOTE_ADDR", "")
 
     return ip
 
@@ -58,10 +94,10 @@ def get_country_from_ip(ip_address):
              Returns DEFAULT_REGION if lookup fails
     """
     # Skip localhost/private IPs
-    if ip_address in ('127.0.0.1', 'localhost', '', None):
+    if ip_address in ("127.0.0.1", "localhost", "", None):
         return DEFAULT_REGION
 
-    if ip_address.startswith(('10.', '172.', '192.168.')):
+    if ip_address.startswith(("10.", "172.", "192.168.")):
         return DEFAULT_REGION
 
     # Check cache first
@@ -75,7 +111,7 @@ def get_country_from_ip(ip_address):
         response = requests.get(
             f"http://ip-api.com/json/{ip_address}",
             params={"fields": "status,countryCode"},
-            timeout=3
+            timeout=3,
         )
         response.raise_for_status()
 
@@ -111,7 +147,7 @@ def get_user_region(request):
         str: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "IN")
     """
     # First check if user has a region preference set in session
-    session_region = request.session.get('user_region')
+    session_region = request.session.get("user_region")
     if session_region and session_region in SUPPORTED_REGIONS:
         return session_region
 
@@ -120,7 +156,7 @@ def get_user_region(request):
     region = get_country_from_ip(ip)
 
     # Store in session for future requests
-    request.session['user_region'] = region
+    request.session["user_region"] = region
 
     return region
 
@@ -139,7 +175,7 @@ def set_user_region(request, region_code):
     region_code = region_code.upper()
 
     if region_code in SUPPORTED_REGIONS:
-        request.session['user_region'] = region_code
+        request.session["user_region"] = region_code
         return True
 
     return False
@@ -198,8 +234,5 @@ def get_all_regions():
     Returns:
         list: List of dicts with 'code' and 'name' keys, sorted by name
     """
-    regions = [
-        {"code": code, "name": name}
-        for code, name in REGION_NAMES.items()
-    ]
+    regions = [{"code": code, "name": name} for code, name in REGION_NAMES.items()]
     return sorted(regions, key=lambda x: x["name"])

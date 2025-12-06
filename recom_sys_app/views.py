@@ -1543,14 +1543,16 @@ def get_user_region_api(request):
 
     region = get_user_region(request)
 
-    return JsonResponse({
-        "success": True,
-        "region": {
-            "code": region,
-            "name": REGION_NAMES.get(region, region),
-        },
-        "available_regions": get_all_regions(),
-    })
+    return JsonResponse(
+        {
+            "success": True,
+            "region": {
+                "code": region,
+                "name": REGION_NAMES.get(region, region),
+            },
+            "available_regions": get_all_regions(),
+        }
+    )
 
 
 @login_required
@@ -1568,35 +1570,31 @@ def set_user_region_api(request):
 
         if not region_code:
             return JsonResponse(
-                {"success": False, "message": "Region code is required"},
-                status=400
+                {"success": False, "message": "Region code is required"}, status=400
             )
 
         if region_code not in SUPPORTED_REGIONS:
             return JsonResponse(
                 {"success": False, "message": f"Invalid region code: {region_code}"},
-                status=400
+                status=400,
             )
 
         set_user_region(request, region_code)
 
         from .geolocation import REGION_NAMES
-        return JsonResponse({
-            "success": True,
-            "message": f"Region set to {REGION_NAMES.get(region_code, region_code)}",
-            "region": {
-                "code": region_code,
-                "name": REGION_NAMES.get(region_code, region_code),
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": f"Region set to {REGION_NAMES.get(region_code, region_code)}",
+                "region": {
+                    "code": region_code,
+                    "name": REGION_NAMES.get(region_code, region_code),
+                },
             }
-        })
+        )
 
     except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "message": "Invalid JSON"},
-            status=400
-        )
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
     except Exception as e:
-        return JsonResponse(
-            {"success": False, "message": str(e)},
-            status=500
-        )
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
