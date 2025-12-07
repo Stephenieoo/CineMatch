@@ -423,12 +423,10 @@ def get_solo_likes(request):
         }
     """
     try:
-        # Get all LIKE and WATCHED_LIKED interactions for this user
+        # Get all LIKE and WATCHED_LIKED interactions for this user (limit to 50)
         liked_interactions = Interaction.objects.filter(
             user=request.user, status__in=["LIKE", "WATCHED_LIKED"]
-        ).order_by("-updated_at")[
-            :100
-        ]  # Get last 100 likes
+        ).order_by("-updated_at")[:50]
 
         # Build a map of tmdb_id to action_type
         action_map = {}
@@ -439,7 +437,7 @@ def get_solo_likes(request):
             )
             action_map[interaction.tmdb_id] = action_type
 
-        # Get unique tmdb_ids
+        # Get unique tmdb_ids (already limited to 50 by the query)
         tmdb_ids = list(action_map.keys())
 
         # Fetch details from TMDB
