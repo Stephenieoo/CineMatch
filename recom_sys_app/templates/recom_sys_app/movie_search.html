@@ -468,35 +468,248 @@
 
     /* Selected Movie Display */
     .selected-movie-display {
-      background: rgba(229, 9, 20, 0.1);
-      border-radius: 12px;
-      padding: 20px;
+      background: rgba(229, 9, 20, 0.08);
+      border-radius: 16px;
+      padding: 25px;
       margin-bottom: 20px;
       display: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+
+    .selected-movie-display:hover {
+      background: rgba(229, 9, 20, 0.15);
+      border-color: rgba(229, 9, 20, 0.3);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(229, 9, 20, 0.15);
     }
 
     .selected-movie-display.active {
       display: flex;
-      gap: 20px;
-      align-items: center;
+      gap: 25px;
+      align-items: flex-start;
     }
 
     .selected-poster {
-      width: 100px;
-      height: 150px;
-      border-radius: 8px;
+      width: 140px;
+      height: 210px;
+      border-radius: 12px;
       object-fit: cover;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      flex-shrink: 0;
+    }
+
+    .selected-info {
+      flex: 1;
     }
 
     .selected-info h3 {
-      font-size: 1.3rem;
+      font-size: 1.5rem;
       color: #4c1d95;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      font-weight: 700;
     }
 
-    .selected-info p {
-      color: #6b46c1;
+    .selected-meta {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .selected-year {
+      color: #E50914;
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .selected-rating {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: #fbbf24;
+      font-weight: 600;
+    }
+
+    .selected-rating-star {
+      color: #fbbf24;
+    }
+
+    .selected-overview {
+      color: #666;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .selected-click-hint {
+      color: #E50914;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Movie Details Modal */
+    .movie-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .movie-modal-overlay.active {
+      display: flex;
+    }
+
+    .movie-modal-content {
+      background: rgba(20, 20, 20, 0.98);
+      border-radius: 20px;
+      max-width: 700px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(229, 9, 20, 0.2);
+    }
+
+    .movie-modal-close {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(229, 9, 20, 0.9);
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: all 0.3s;
+    }
+
+    .movie-modal-close:hover {
+      background: #E50914;
+      transform: scale(1.1);
+    }
+
+    .movie-modal-poster {
+      width: 100%;
+      height: 400px;
+      object-fit: cover;
+      border-radius: 20px 20px 0 0;
+    }
+
+    .movie-modal-body {
+      padding: 30px;
+      color: white;
+    }
+
+    .movie-modal-title {
+      font-size: 2rem;
+      font-weight: 700;
       margin-bottom: 15px;
+    }
+
+    .movie-modal-meta {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      font-size: 1.1rem;
+    }
+
+    .movie-modal-genres {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .movie-modal-genre {
+      background: rgba(229, 9, 20, 0.2);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      border: 1px solid rgba(229, 9, 20, 0.4);
+    }
+
+    .movie-modal-overview {
+      color: #ccc;
+      line-height: 1.8;
+      font-size: 1rem;
+      margin-bottom: 25px;
+    }
+
+    .movie-modal-section {
+      margin-bottom: 20px;
+    }
+
+    .movie-modal-section-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      color: #999;
+      margin-bottom: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+
+    .movie-modal-cast {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .movie-modal-cast-member {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #ccc;
+    }
+
+    .movie-modal-providers {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .movie-modal-provider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(229, 9, 20, 0.15);
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      border: 1px solid rgba(229, 9, 20, 0.3);
+    }
+
+    .movie-modal-loading {
+      text-align: center;
+      padding: 60px;
+      color: #999;
     }
 
     .btn-find-similar {
@@ -595,7 +808,7 @@
             type="text" 
             class="global-search-input" 
             id="globalSearchInput"
-            placeholder="Quick search movies..."
+            placeholder="Search for similar movies..."
             autocomplete="off"
             spellcheck="false"
           >
@@ -643,11 +856,35 @@
 
     <!-- Selected Movie Section -->
     <div class="search-card">
-      <div class="selected-movie-display" id="selectedMovieDisplay">
+      <div class="selected-movie-display" id="selectedMovieDisplay" onclick="showMovieDetailsModal()">
         <img src="" alt="Movie Poster" class="selected-poster" id="selectedPoster">
         <div class="selected-info">
           <h3 id="selectedTitle"></h3>
-          <p id="selectedYear"></p>
+          <div class="selected-meta">
+            <span class="selected-year" id="selectedYear"></span>
+            <span class="selected-rating" id="selectedRating">
+              <span class="selected-rating-star">⭐</span>
+              <span id="selectedRatingValue"></span>
+            </span>
+          </div>
+          <p class="selected-overview" id="selectedOverview"></p>
+          <div class="selected-click-hint">
+            <span>ℹ️</span>
+            <span>Click for full details & where to watch</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Movie Details Modal -->
+    <div class="movie-modal-overlay" id="movieModal" onclick="closeMovieModal(event)">
+      <div class="movie-modal-content" onclick="event.stopPropagation()">
+        <button class="movie-modal-close" onclick="closeMovieModal()">✕</button>
+        <div id="movieModalBody">
+          <div class="movie-modal-loading">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 15px;">Loading movie details...</p>
+          </div>
         </div>
       </div>
     </div>
@@ -935,17 +1172,188 @@
       }
     });
 
-    // Show selected movie info
-    function showSelectedMovie(movie) {
+    // Show selected movie info - fetches full details from API
+    async function showSelectedMovie(movie) {
       const posterUrl = movie.poster_path
         ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-        : 'https://via.placeholder.com/100x150?text=No+Poster';
+        : (movie.poster_url || 'https://via.placeholder.com/140x210?text=No+Poster');
 
+      // Show basic info immediately
       document.getElementById('selectedPoster').src = posterUrl;
       document.getElementById('selectedTitle').textContent = movie.title;
-      document.getElementById('selectedYear').textContent = movie.year ? `Released: ${movie.year}` : 'Release date unknown';
+      document.getElementById('selectedYear').textContent = movie.year || movie.release_date?.substring(0, 4) || '';
+      document.getElementById('selectedRatingValue').textContent = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
+      document.getElementById('selectedOverview').textContent = movie.overview || 'Loading details...';
       document.getElementById('selectedMovieDisplay').classList.add('active');
+
+      // Fetch full movie details if we don't have overview
+      if (!movie.overview && movie.tmdb_id) {
+        try {
+          const response = await fetch(`/movie/${movie.tmdb_id}/`);
+          const data = await response.json();
+          
+          if (data.success && data.movie) {
+            const fullMovie = data.movie;
+            // Update with full details
+            selectedMovieData = { ...selectedMovieData, ...fullMovie };
+            
+            document.getElementById('selectedOverview').textContent = fullMovie.overview || 'No description available.';
+            document.getElementById('selectedRatingValue').textContent = fullMovie.vote_average ? fullMovie.vote_average.toFixed(1) : 'N/A';
+            
+            if (fullMovie.poster_url) {
+              document.getElementById('selectedPoster').src = fullMovie.poster_url;
+            }
+            if (fullMovie.release_date) {
+              document.getElementById('selectedYear').textContent = fullMovie.release_date.substring(0, 4);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching movie details:', error);
+          document.getElementById('selectedOverview').textContent = 'Click for more details about this movie.';
+        }
+      }
     }
+
+    // Show movie details modal
+    async function showMovieDetailsModal() {
+      if (!selectedMovieData || !selectedMovieData.tmdb_id) return;
+
+      const modal = document.getElementById('movieModal');
+      const modalBody = document.getElementById('movieModalBody');
+      
+      modal.classList.add('active');
+      
+      modalBody.innerHTML = `
+        <div class="movie-modal-loading">
+          <div class="loading-spinner"></div>
+          <p style="margin-top: 15px;">Loading movie details...</p>
+        </div>
+      `;
+
+      try {
+        const response = await fetch(`/movie/${selectedMovieData.tmdb_id}/`);
+        const data = await response.json();
+
+        if (data.success && data.movie) {
+          displayMovieModal(data.movie);
+        } else {
+          modalBody.innerHTML = `
+            <div class="movie-modal-body">
+              <h2 class="movie-modal-title">Error</h2>
+              <p>Unable to load movie details. Please try again.</p>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error fetching movie details:', error);
+        modalBody.innerHTML = `
+          <div class="movie-modal-body">
+            <h2 class="movie-modal-title">Error</h2>
+            <p>Unable to load movie details. Please try again.</p>
+          </div>
+        `;
+      }
+    }
+
+    // Display movie details in modal
+    function displayMovieModal(movie) {
+      const modalBody = document.getElementById('movieModalBody');
+      const year = movie.release_date ? movie.release_date.substring(0, 4) : '';
+      const runtime = movie.runtime ? `${Math.floor(movie.runtime / 60)}h ${movie.runtime % 60}m` : '';
+
+      // Build genres HTML
+      const genresHTML = movie.genres && movie.genres.length > 0
+        ? movie.genres.map(g => `<span class="movie-modal-genre">${g}</span>`).join('')
+        : '';
+
+      // Build cast HTML
+      const castHTML = movie.cast && movie.cast.length > 0
+        ? movie.cast.slice(0, 8).map(actor => `<span class="movie-modal-cast-member">${actor.name}</span>`).join('')
+        : '<span style="color: #666;">Cast information not available</span>';
+
+      // Build streaming providers HTML
+      let providersHTML = '<span style="color: #666;">Streaming information not available</span>';
+      if (movie.watch_providers) {
+        const providers = [];
+        if (movie.watch_providers.flatrate && movie.watch_providers.flatrate.length > 0) {
+          providers.push(...movie.watch_providers.flatrate.map(p =>
+            `<span class="movie-modal-provider">📺 ${p.provider_name}</span>`
+          ));
+        }
+        if (movie.watch_providers.rent && movie.watch_providers.rent.length > 0) {
+          providers.push(...movie.watch_providers.rent.slice(0, 3).map(p =>
+            `<span class="movie-modal-provider">💰 ${p.provider_name}</span>`
+          ));
+        }
+        if (providers.length > 0) {
+          providersHTML = providers.join('');
+        }
+      }
+
+      modalBody.innerHTML = `
+        <img src="${movie.poster_url || 'https://via.placeholder.com/700x400?text=No+Poster'}" 
+             alt="${movie.title}" 
+             class="movie-modal-poster"
+             onerror="this.src='https://via.placeholder.com/700x400?text=No+Poster'">
+        
+        <div class="movie-modal-body">
+          <h2 class="movie-modal-title">${movie.title} ${year ? `(${year})` : ''}</h2>
+          
+          <div class="movie-modal-meta">
+            ${movie.vote_average ? `<span>⭐ ${movie.vote_average.toFixed(1)}/10</span>` : ''}
+            ${movie.vote_count ? `<span>${movie.vote_count.toLocaleString()} votes</span>` : ''}
+            ${runtime ? `<span>⏱️ ${runtime}</span>` : ''}
+          </div>
+
+          ${genresHTML ? `
+            <div class="movie-modal-genres">
+              ${genresHTML}
+            </div>
+          ` : ''}
+
+          ${movie.overview ? `
+            <div class="movie-modal-section">
+              <div class="movie-modal-section-title">Overview</div>
+              <p class="movie-modal-overview">${movie.overview}</p>
+            </div>
+          ` : ''}
+
+          ${movie.director ? `
+            <div class="movie-modal-section">
+              <div class="movie-modal-section-title">Director</div>
+              <p style="color: #ccc;">🎬 ${movie.director.name}</p>
+            </div>
+          ` : ''}
+
+          <div class="movie-modal-section">
+            <div class="movie-modal-section-title">Top Cast</div>
+            <div class="movie-modal-cast">
+              ${castHTML}
+            </div>
+          </div>
+
+          <div class="movie-modal-section">
+            <div class="movie-modal-section-title">Where to Watch</div>
+            <div class="movie-modal-providers">
+              ${providersHTML}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Close movie modal
+    function closeMovieModal(event) {
+      if (event && event.target.id !== 'movieModal') return;
+      document.getElementById('movieModal').classList.remove('active');
+    }
+
+    // Close modal with Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeMovieModal();
+      }
+    });
 
     // Fetch and display similar movies
     async function fetchAndDisplaySimilarMovies(movie) {
@@ -1006,7 +1414,7 @@
         const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
 
         html += `
-          <div class="movie-result" onclick="window.open('https://www.themoviedb.org/movie/${movie.tmdb_id}', '_blank')">
+          <div class="movie-result" onclick="showSimilarMovieDetails(${movie.tmdb_id})" style="cursor: pointer;">
             <img src="${posterUrl}" alt="${movie.title}" class="movie-poster" onerror="this.src='https://via.placeholder.com/200x300?text=No+Poster'">
             <div class="movie-info">
               <div class="movie-title">${movie.title}</div>
@@ -1027,6 +1435,45 @@
       `;
 
       similarSection.innerHTML = html;
+    }
+
+    // Show similar movie details in modal
+    async function showSimilarMovieDetails(tmdbId) {
+      const modal = document.getElementById('movieModal');
+      const modalBody = document.getElementById('movieModalBody');
+      
+      modal.classList.add('active');
+      
+      modalBody.innerHTML = `
+        <div class="movie-modal-loading">
+          <div class="loading-spinner"></div>
+          <p style="margin-top: 15px;">Loading movie details...</p>
+        </div>
+      `;
+
+      try {
+        const response = await fetch(`/movie/${tmdbId}/`);
+        const data = await response.json();
+
+        if (data.success && data.movie) {
+          displayMovieModal(data.movie);
+        } else {
+          modalBody.innerHTML = `
+            <div class="movie-modal-body">
+              <h2 class="movie-modal-title">Error</h2>
+              <p>Unable to load movie details. Please try again.</p>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error fetching movie details:', error);
+        modalBody.innerHTML = `
+          <div class="movie-modal-body">
+            <h2 class="movie-modal-title">Error</h2>
+            <p>Unable to load movie details. Please try again.</p>
+          </div>
+        `;
+      }
     }
     
     // ==================== HANDLE URL PARAMS (from global search) ====================

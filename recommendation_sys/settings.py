@@ -198,6 +198,10 @@ if _frontend_dist.exists():
 
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+# Media files (user uploads)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
 # WhiteNoise configuration for serving static files in production
 # Only use manifest storage in production (requires collectstatic to be run first)
 if DEBUG:

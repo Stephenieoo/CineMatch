@@ -144,67 +144,125 @@
         .action-buttons {
             display: flex;
             justify-content: center;
-            gap: 30px;
+            align-items: center;
+            gap: 15px;
             margin-top: 30px;
             position: relative;
             z-index: 2;
         }
 
-        .action-btn {
+        .action-btn-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             width: 70px;
-            height: 70px;
+        }
+
+        .action-btn {
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 32px;
+            font-size: 24px;
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border: none;
+            position: relative;
         }
 
         .action-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            transform: scale(1.15) translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
         }
 
         .action-btn:active {
             transform: scale(0.95);
         }
 
-        .dislike-btn {
-            background: #E50914;
+        /* Tooltip Styles */
+        .action-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .action-btn:hover::after {
+            opacity: 1;
+            visibility: visible;
+            bottom: -40px;
+        }
+
+        /* Pass Button - Red */
+        .pass-btn {
+            background: linear-gradient(135deg, #E50914 0%, #b20710 100%);
             color: white;
         }
 
-        .dislike-btn:hover {
-            background: #ff0a16;
-            box-shadow: 0 6px 25px rgba(229, 9, 20, 0.6);
+        .pass-btn:hover {
+            background: linear-gradient(135deg, #ff1a25 0%, #E50914 100%);
+            box-shadow: 0 8px 30px rgba(229, 9, 20, 0.6);
         }
 
+        /* Watched but didn't like - Orange/Amber */
+        .watched-disliked-btn {
+            background: linear-gradient(135deg, #FF6B35 0%, #d4531f 100%);
+            color: white;
+        }
+
+        .watched-disliked-btn:hover {
+            background: linear-gradient(135deg, #ff8555 0%, #FF6B35 100%);
+            box-shadow: 0 8px 30px rgba(255, 107, 53, 0.6);
+        }
+
+        /* Watched and liked - Blue */
+        .watched-liked-btn {
+            background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);
+            color: white;
+        }
+
+        .watched-liked-btn:hover {
+            background: linear-gradient(135deg, #42a5f5 0%, #2196F3 100%);
+            box-shadow: 0 8px 30px rgba(33, 150, 243, 0.6);
+        }
+
+        /* Like Button - Green */
         .like-btn {
-            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+            background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
             color: white;
         }
 
-        .watch-later-btn {
-            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
-            color: white;
+        .like-btn:hover {
+            background: linear-gradient(135deg, #66bb6a 0%, #4caf50 100%);
+            box-shadow: 0 8px 30px rgba(76, 175, 80, 0.6);
         }
 
-        .watch-later-btn:hover {
-            background: linear-gradient(135deg, #FFB74D 0%, #FF9800 100%);
-            box-shadow: 0 6px 25px rgba(255, 152, 0, 0.6);
-        }
-
-        .watched-btn {
-            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-            color: white;
-        }
-
-        .watched-btn:hover {
-            background: linear-gradient(135deg, #64B5F6 0%, #2196F3 100%);
-            box-shadow: 0 6px 25px rgba(33, 150, 243, 0.6);
+        /* Button Labels */
+        .btn-label {
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.6);
+            text-align: center;
+            margin-top: 6px;
+            width: 70px;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .loading-spinner {
@@ -276,6 +334,79 @@
             height: 90px;
             object-fit: cover;
             border-radius: 5px;
+        }
+
+        /* Likes Panel Tabs */
+        .likes-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .likes-tab {
+            flex: 1;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #999;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .likes-tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .likes-tab.active {
+            background: rgba(229, 9, 20, 0.2);
+            border-color: #E50914;
+            color: #E50914;
+        }
+
+        .tab-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+        }
+
+        .likes-tab.active .tab-badge {
+            background: rgba(229, 9, 20, 0.3);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .remove-all-btn {
+            width: 100%;
+            padding: 10px;
+            background: rgba(229, 9, 20, 0.1);
+            border: 1px solid rgba(229, 9, 20, 0.3);
+            border-radius: 8px;
+            color: #E50914;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 15px;
+        }
+
+        .remove-all-btn:hover {
+            background: rgba(229, 9, 20, 0.2);
+            border-color: #E50914;
         }
 
         /* Movie Details Modal */
@@ -449,12 +580,36 @@
         <!-- Likes Panel -->
         <div id="likes-panel" class="likes-panel">
             <div class="p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold" style="color: #E50914;">Your Liked Movies</h2>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold" style="color: #E50914;">Your Movies</h2>
                     <button onclick="toggleLikesPanel()" class="text-2xl text-white hover:text-red-500">✕</button>
                 </div>
-                <div id="likes-list">
-                    <p class="text-gray-300 text-center">No likes yet. Start swiping!</p>
+                
+                <!-- Tabs -->
+                <div class="likes-tabs mb-4">
+                    <button class="likes-tab active" data-tab="liked" onclick="switchLikesTab('liked')">
+                        ♥ Liked <span id="liked-count-badge" class="tab-badge">0</span>
+                    </button>
+                    <button class="likes-tab" data-tab="watched" onclick="switchLikesTab('watched')">
+                        👍 Watched & Liked <span id="watched-count-badge" class="tab-badge">0</span>
+                    </button>
+                </div>
+                
+                <!-- Remove All Button -->
+                <button id="remove-all-btn" onclick="removeAllLikes()" class="remove-all-btn" style="display: none;">
+                    🗑️ Remove All
+                </button>
+                
+                <!-- Tab Contents -->
+                <div id="liked-tab-content" class="tab-content active">
+                    <div id="likes-list">
+                        <p class="text-gray-300 text-center">No liked movies yet. Start swiping!</p>
+                    </div>
+                </div>
+                <div id="watched-tab-content" class="tab-content" style="display: none;">
+                    <div id="watched-list">
+                        <p class="text-gray-300 text-center">No watched movies yet. Start swiping!</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -469,17 +624,29 @@
 
         <!-- Action Buttons -->
         <div class="action-buttons">
-            <div class="action-btn dislike-btn" onclick="swipeCard('dislike')" title="Pass">
-                ✕
+            <div class="action-btn-wrapper">
+                <button class="action-btn pass-btn" onclick="swipeCard('dislike')" data-tooltip="Not interested">
+                    ✕
+                </button>
+                <span class="btn-label">Pass</span>
             </div>
-            <div class="action-btn watch-later-btn" onclick="swipeCard('watch_later')" title="Watch Later">
-                🕒
+            <div class="action-btn-wrapper">
+                <button class="action-btn watched-disliked-btn" onclick="swipeCard('watched_disliked')" data-tooltip="Watched but didn't like">
+                    👎
+                </button>
+                <span class="btn-label">Didn't Like</span>
             </div>
-            <div class="action-btn watched-btn" onclick="swipeCard('watched')" title="Watched">
-                ✓
+            <div class="action-btn-wrapper">
+                <button class="action-btn watched-liked-btn" onclick="swipeCard('watched_liked')" data-tooltip="Watched and loved it!">
+                    👍
+                </button>
+                <span class="btn-label">Watched</span>
             </div>
-            <div class="action-btn like-btn" onclick="swipeCard('like')" title="Like">
-                ♥
+            <div class="action-btn-wrapper">
+                <button class="action-btn like-btn" onclick="swipeCard('like')" data-tooltip="Want to watch!">
+                    ♥
+                </button>
+                <span class="btn-label">Like</span>
             </div>
         </div>
 
@@ -513,8 +680,10 @@
         let currentIndex = 0;
         let likedMovies = [];
         let isDragging = false;
+        let wasDragging = false;  // Track if a drag occurred to prevent click triggering
         let startX = 0;
         let currentX = 0;
+        let dragStartTime = 0;
 
         // Load movies on page load
         window.addEventListener('DOMContentLoaded', async () => {
@@ -524,7 +693,7 @@
 
         async function loadMovies() {
             try {
-                const response = await fetch('/api/solo/deck/?limit=30');
+                const response = await fetch('/api/solo/deck/?limit=50');
                 const data = await response.json();
 
                 if (data.success) {
@@ -541,17 +710,79 @@
             }
         }
 
+        let watchedLikedMovies = [];
+        let currentLikesTab = 'liked';
+
         async function loadLikedMovies() {
             try {
-                const response = await fetch('/api/solo/likes/');
-                const data = await response.json();
+                // Load liked movies (LIKE status)
+                const likesResponse = await fetch('/api/solo/likes/');
+                const likesData = await likesResponse.json();
 
-                if (data.success) {
-                    likedMovies = data.movies;
+                if (likesData.success) {
+                    likedMovies = likesData.movies.filter(m => m.action_type !== 'watched_liked');
+                    watchedLikedMovies = likesData.movies.filter(m => m.action_type === 'watched_liked');
                     updateLikesPanel();
                 }
             } catch (error) {
                 console.error('Error loading likes:', error);
+            }
+        }
+
+        function switchLikesTab(tab) {
+            currentLikesTab = tab;
+            
+            // Update tab buttons
+            document.querySelectorAll('.likes-tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tab);
+            });
+            
+            // Update tab contents
+            document.getElementById('liked-tab-content').style.display = tab === 'liked' ? 'block' : 'none';
+            document.getElementById('watched-tab-content').style.display = tab === 'watched' ? 'block' : 'none';
+            
+            // Update remove all button visibility
+            updateRemoveAllButton();
+        }
+
+        function updateRemoveAllButton() {
+            const removeAllBtn = document.getElementById('remove-all-btn');
+            const hasMovies = currentLikesTab === 'liked' ? likedMovies.length > 0 : watchedLikedMovies.length > 0;
+            removeAllBtn.style.display = hasMovies ? 'block' : 'none';
+        }
+
+        async function removeAllLikes() {
+            const tabName = currentLikesTab === 'liked' ? 'Liked Movies' : 'Watched & Liked Movies';
+            const moviesList = currentLikesTab === 'liked' ? likedMovies : watchedLikedMovies;
+            
+            if (moviesList.length === 0) {
+                alert('No movies to remove.');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to remove all ${moviesList.length} movies from "${tabName}"?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const csrfToken = getCookie('csrftoken');
+                
+                // Remove all movies one by one
+                for (const movie of moviesList) {
+                    await fetch(`/api/solo/unlike/${movie.tmdb_id}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': csrfToken
+                        }
+                    });
+                }
+                
+                // Refresh the list
+                await loadLikedMovies();
+                alert(`Successfully removed all movies from "${tabName}".`);
+            } catch (error) {
+                console.error('Error removing movies:', error);
+                alert('An error occurred while removing movies.');
             }
         }
 
@@ -576,10 +807,19 @@
             card.className = 'swipe-card';
             card.style.zIndex = 100 - stackIndex;
             card.style.transform = `scale(${1 - stackIndex * 0.05}) translateY(${stackIndex * 10}px)`;
+            card.dataset.tmdbId = movie.tmdb_id;
 
             if (stackIndex === 0) {
                 card.addEventListener('mousedown', startDrag);
                 card.addEventListener('touchstart', startDrag);
+                // Add click handler for showing details (only fires if not dragging)
+                card.addEventListener('click', (e) => {
+                    // Only trigger if we haven't dragged significantly
+                    if (!wasDragging) {
+                        showMovieDetails(movie.tmdb_id, e);
+                    }
+                    wasDragging = false;
+                });
             }
 
             const posterUrl = movie.poster_url || 'https://via.placeholder.com/400x600?text=No+Poster';
@@ -588,16 +828,17 @@
 
             card.innerHTML = `
                 <button class="info-button" onclick="showMovieDetails(${movie.tmdb_id}, event)" title="View Details">ℹ️</button>
-                <img src="${posterUrl}" alt="${movie.title}" class="card-image">
+                <img src="${posterUrl}" alt="${movie.title}" class="card-image" draggable="false">
                 <div class="overlay like">LIKE</div>
-                <div class="overlay dislike">NOPE</div>
-                <div class="p-6" style="color: white;">
+                <div class="overlay dislike">PASS</div>
+                <div class="p-6" style="color: white; cursor: pointer;">
                     <h2 class="text-2xl font-bold mb-2">${movie.title}</h2>
                     <div class="flex items-center gap-4 text-sm mb-3" style="color: #999;">
                         <span>⭐ ${rating}</span>
                         <span>📅 ${year}</span>
                     </div>
                     <p class="text-sm line-clamp-3" style="color: #ccc;">${movie.overview || 'No description available.'}</p>
+                    <p class="text-xs mt-2" style="color: rgba(229, 9, 20, 0.7);">Tap for details • Swipe to rate</p>
                 </div>
             `;
 
@@ -617,13 +858,16 @@
             if (isClickableElement) return;
 
             isDragging = true;
+            wasDragging = false;
+            dragStartTime = Date.now();
             const card = e.currentTarget;
             card.classList.add('swiping');
 
             startX = e.type === 'mousedown' ? e.clientX : e.touches[0].clientX;
+            currentX = startX;
 
             const moveHandler = (e) => handleDragMove(e, card);
-            const endHandler = () => handleDragEnd(card, moveHandler, endHandler);
+            const endHandler = (e) => handleDragEnd(card, moveHandler, endHandler, e);
 
             document.addEventListener('mousemove', moveHandler);
             document.addEventListener('touchmove', moveHandler);
@@ -637,6 +881,11 @@
             currentX = e.type === 'mousemove' ? e.clientX : e.touches[0].clientX;
             const deltaX = currentX - startX;
             const rotation = deltaX / 20;
+
+            // Mark as dragged if moved more than 10 pixels
+            if (Math.abs(deltaX) > 10) {
+                wasDragging = true;
+            }
 
             card.style.transform = `translateX(${deltaX}px) rotate(${rotation}deg)`;
 
@@ -656,21 +905,26 @@
             }
         }
 
-        function handleDragEnd(card, moveHandler, endHandler) {
+        function handleDragEnd(card, moveHandler, endHandler, e) {
             if (!isDragging) return;
 
             isDragging = false;
             card.classList.remove('swiping');
 
             const deltaX = currentX - startX;
+            const dragDuration = Date.now() - dragStartTime;
 
             document.removeEventListener('mousemove', moveHandler);
             document.removeEventListener('touchmove', moveHandler);
             document.removeEventListener('mouseup', endHandler);
             document.removeEventListener('touchend', endHandler);
 
-            // Determine if swipe was significant enough
-            if (Math.abs(deltaX) > 100) {
+            // Determine if swipe was significant enough (moved > 100px or quick flick)
+            const isSignificantSwipe = Math.abs(deltaX) > 100 || 
+                                       (Math.abs(deltaX) > 50 && dragDuration < 200);
+            
+            if (isSignificantSwipe) {
+                wasDragging = true;  // Ensure click doesn't fire
                 const action = deltaX > 0 ? 'like' : 'dislike';
                 animateCardRemoval(card, action);
                 recordSwipe(action);
@@ -691,25 +945,30 @@
         }
 
         function animateCardRemoval(card, action) {
-            let direction = 0;
+            card.classList.add('removed');
 
             if (action === 'like') {
-                direction = 1; // Swipe right
+                // Swipe right with green glow
+                card.style.transform = 'translateX(1000px) rotate(45deg)';
+                card.style.boxShadow = '0 0 50px rgba(76, 175, 80, 0.8)';
             } else if (action === 'dislike') {
-                direction = -1; // Swipe left
-            } else if (action === 'watch_later' || action === 'watched') {
-                // Fade out and slide down for watch later/watched
-                card.classList.add('removed');
-                card.style.transform = 'translateY(1000px) scale(0.8)';
-                card.style.opacity = '0';
+                // Swipe left with red glow
+                card.style.transform = 'translateX(-1000px) rotate(-45deg)';
+                card.style.boxShadow = '0 0 50px rgba(229, 9, 20, 0.8)';
+            } else if (action === 'watched_liked') {
+                // Swipe up-right with blue glow
+                card.style.transform = 'translateY(-500px) translateX(300px) rotate(20deg) scale(0.8)';
+                card.style.boxShadow = '0 0 50px rgba(33, 150, 243, 0.8)';
+            } else if (action === 'watched_disliked') {
+                // Swipe up-left with orange glow
+                card.style.transform = 'translateY(-500px) translateX(-300px) rotate(-20deg) scale(0.8)';
+                card.style.boxShadow = '0 0 50px rgba(255, 107, 53, 0.8)';
             } else {
-                direction = -1; // Default to left swipe
+                // Default: fade out and slide down
+                card.style.transform = 'translateY(1000px) scale(0.8)';
             }
 
-            if (direction !== 0) {
-                card.classList.add('removed');
-                card.style.transform = `translateX(${direction * 1000}px) rotate(${direction * 45}deg)`;
-            }
+            card.style.opacity = '0';
 
             setTimeout(() => {
                 currentIndex++;
@@ -737,9 +996,21 @@
 
                 const data = await response.json();
 
-                if (data.success && action === 'like') {
-                    likedMovies.unshift(movie);
-                    updateLikesPanel();
+                // Add to appropriate list based on action
+                if (data.success) {
+                    if (action === 'like') {
+                        likedMovies.unshift({
+                            ...movie,
+                            action_type: 'like'
+                        });
+                        updateLikesPanel();
+                    } else if (action === 'watched_liked') {
+                        watchedLikedMovies.unshift({
+                            ...movie,
+                            action_type: 'watched_liked'
+                        });
+                        updateLikesPanel();
+                    }
                 }
             } catch (error) {
                 console.error('Error recording swipe:', error);
@@ -754,30 +1025,54 @@
 
         function updateLikesPanel() {
             const likesList = document.getElementById('likes-list');
+            const watchedList = document.getElementById('watched-list');
             const likesCount = document.getElementById('likes-count');
+            const likedCountBadge = document.getElementById('liked-count-badge');
+            const watchedCountBadge = document.getElementById('watched-count-badge');
 
-            likesCount.textContent = likedMovies.length;
+            // Update badge counts
+            const totalCount = likedMovies.length + watchedLikedMovies.length;
+            likesCount.textContent = totalCount;
+            likedCountBadge.textContent = likedMovies.length;
+            watchedCountBadge.textContent = watchedLikedMovies.length;
 
+            // Update liked movies list
             if (likedMovies.length === 0) {
-                likesList.innerHTML = '<p class="text-gray-300 text-center">No likes yet. Start swiping!</p>';
-                return;
+                likesList.innerHTML = '<p class="text-gray-300 text-center py-4">No liked movies yet. Start swiping!</p>';
+            } else {
+                likesList.innerHTML = likedMovies.map(movie => renderMovieCard(movie, 'WANT TO WATCH', 'rgba(76, 175, 80, 0.3)', '#81C784')).join('');
             }
 
-            likesList.innerHTML = likedMovies.map(movie => `
+            // Update watched & liked movies list
+            if (watchedLikedMovies.length === 0) {
+                watchedList.innerHTML = '<p class="text-gray-300 text-center py-4">No watched movies yet. Start swiping!</p>';
+            } else {
+                watchedList.innerHTML = watchedLikedMovies.map(movie => renderMovieCard(movie, 'WATCHED & LIKED', 'rgba(33, 150, 243, 0.3)', '#64B5F6')).join('');
+            }
+            
+            // Update remove all button visibility
+            updateRemoveAllButton();
+        }
+
+        function renderMovieCard(movie, labelText, labelBg, labelColor) {
+            return `
                 <div class="liked-movie" style="position: relative;">
                     <button onclick="removeLike(${movie.tmdb_id}, event)"
                             class="remove-like-btn"
-                            title="Remove from likes"
+                            title="Remove"
                             style="position: absolute; top: 4px; right: 4px; background: rgba(229, 9, 20, 0.9); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease;">
                         ×
                     </button>
                     <img src="${movie.poster_url || 'https://via.placeholder.com/60x90'}" alt="${movie.title}">
                     <div class="flex-1">
-                        <h3 class="font-bold">${movie.title}</h3>
-                        <p class="text-sm text-gray-300">${movie.year || 'N/A'} • ⭐ ${movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'}</p>
+                        <h3 class="font-bold" style="color: white;">${movie.title}</h3>
+                        <p class="text-sm" style="color: #999;">${movie.year || 'N/A'} • ⭐ ${movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'}</p>
+                        <div class="mt-1">
+                            <span style="background: ${labelBg}; color: ${labelColor}; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${labelText}</span>
+                        </div>
                     </div>
                 </div>
-            `).join('');
+            `;
         }
 
         async function removeLike(tmdb_id, event) {
@@ -798,8 +1093,9 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // Remove from local array
+                    // Remove from both local arrays
                     likedMovies = likedMovies.filter(m => m.tmdb_id !== tmdb_id);
+                    watchedLikedMovies = watchedLikedMovies.filter(m => m.tmdb_id !== tmdb_id);
                     // Update the UI
                     updateLikesPanel();
                 } else {
@@ -1040,33 +1336,6 @@
             modalOpen = false;
         }
 
-        // Prevent swiping when modal is open
-        function startDrag(e) {
-            if (currentIndex >= movies.length || modalOpen) return;
-
-            // Prevent dragging when clicking on interactive elements
-            const target = e.target;
-            const isClickableElement = target.tagName === 'BUTTON' ||
-                                      target.tagName === 'A' ||
-                                      target.onclick !== null ||
-                                      target.closest('button') !== null;
-
-            if (isClickableElement) return;
-
-            isDragging = true;
-            const card = e.currentTarget;
-            card.classList.add('swiping');
-
-            startX = e.type === 'mousedown' ? e.clientX : e.touches[0].clientX;
-
-            const moveHandler = (e) => handleDragMove(e, card);
-            const endHandler = () => handleDragEnd(card, moveHandler, endHandler);
-
-            document.addEventListener('mousemove', moveHandler);
-            document.addEventListener('touchmove', moveHandler);
-            document.addEventListener('mouseup', endHandler);
-            document.addEventListener('touchend', endHandler);
-        }
     </script>
 </body>
 </html>

@@ -159,6 +159,180 @@
       transform: translateY(-2px);
     }
 
+    /* Profile Dropdown */
+    .profile-dropdown-container {
+      position: relative;
+    }
+
+    .profile-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #E50914, #b8070f);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: white;
+      transition: all 0.3s;
+      overflow: hidden;
+    }
+
+    .profile-btn img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .profile-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 20px rgba(229, 9, 20, 0.5);
+      border-color: #E50914;
+    }
+
+    .profile-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 10px;
+      background: rgba(20, 20, 20, 0.98);
+      border: 1px solid rgba(229, 9, 20, 0.2);
+      border-radius: 12px;
+      min-width: 200px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px);
+      transition: all 0.3s;
+      z-index: 1000;
+      backdrop-filter: blur(20px);
+    }
+
+    .profile-dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .profile-dropdown-header {
+      padding: 15px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .profile-dropdown-header .name {
+      color: white;
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    .profile-dropdown-header .email {
+      color: #999;
+      font-size: 0.85rem;
+      margin-top: 2px;
+    }
+
+    .profile-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      color: #ccc;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      font-size: 0.95rem;
+    }
+
+    .profile-dropdown-item:hover {
+      background: rgba(229, 9, 20, 0.1);
+      color: white;
+    }
+
+    .profile-dropdown-item.logout {
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      color: #E50914;
+    }
+
+    .profile-dropdown-item.logout:hover {
+      background: rgba(229, 9, 20, 0.2);
+    }
+
+    /* Groups Dropdown */
+    .groups-dropdown-container {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .groups-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-10px);
+      margin-top: 10px;
+      background: rgba(20, 20, 20, 0.98);
+      border: 1px solid rgba(229, 9, 20, 0.2);
+      border-radius: 12px;
+      min-width: 220px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+      z-index: 100;
+      backdrop-filter: blur(20px);
+    }
+
+    .groups-dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .groups-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      color: #ccc;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      background: none;
+      width: 100%;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    .groups-dropdown-item:first-child {
+      border-radius: 12px 12px 0 0;
+    }
+
+    .groups-dropdown-item:last-child {
+      border-radius: 0 0 12px 12px;
+    }
+
+    .groups-dropdown-item:hover {
+      background: rgba(229, 9, 20, 0.1);
+      color: white;
+    }
+
+    /* Golden Sparkle for Community */
+    .golden-sparkle {
+      color: #ffd700;
+      font-size: 1.5rem;
+      animation: sparkle 2s ease-in-out infinite;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    }
+
+    @keyframes sparkle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.1); }
+    }
+
     /* Region Selector Styles */
     .region-selector {
       position: relative;
@@ -589,9 +763,9 @@
     .mode-tabs {
       display: flex;
       justify-content: center;
+      align-items: stretch;
       gap: 12px;
       margin-bottom: 50px;
-      flex-wrap: wrap;
       padding: 10px;
       background: rgba(0, 0, 0, 0.3);
       border-radius: 16px;
@@ -599,7 +773,7 @@
     }
 
     .mode-tab {
-      padding: 14px 24px;
+      padding: 14px 28px;
       border-radius: 10px;
       font-weight: 700;
       font-size: 0.95rem;
@@ -612,6 +786,11 @@
       letter-spacing: 0.3px;
       position: relative;
       overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 50px;
     }
 
     .mode-tab::before {
@@ -770,8 +949,51 @@
       pointer-events: none;
     }
 
+    /* Movie hover overlay */
+    .movie-hover-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(229, 9, 20, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 3;
+    }
+
+    .movie-hover-overlay span {
+      color: white;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 10px 20px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 25px;
+    }
+
+    .movie-preview-card:hover .movie-hover-overlay {
+      opacity: 1;
+    }
+
     .movie-info {
       padding: 12px;
+    }
+
+    .movie-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 4px;
+      font-size: 0.75rem;
+    }
+
+    .movie-rating {
+      color: #fbbf24;
+      font-weight: 600;
+    }
+
+    .movie-year {
+      color: rgba(255, 255, 255, 0.5);
     }
 
     .movie-title {
@@ -1235,7 +1457,7 @@
             type="text" 
             class="global-search-input" 
             id="globalSearchInput"
-            placeholder="Search movies... (e.g., Avatar, Avengers)"
+            placeholder="Search for similar movies... (e.g., Avatar, Avengers)"
             autocomplete="off"
             spellcheck="false"
           >
@@ -1268,15 +1490,34 @@
         </div>
 
         <a href="{% url 'recom_sys:recommend' %}" class="btn btn-primary">
-          Get Recommendations
+          🎬 Get Recommendations
         </a>
-        <a href="{% url 'recom_sys:edit_profile' %}" class="btn btn-secondary">
-          ⚙️ Edit Profile
-        </a>
-        <form method="post" action="{% url 'recom_sys:logout' %}" style="display:inline;">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-logout">Sign Out →</button>
-        </form>
+        
+        <!-- Profile Dropdown -->
+        <div class="profile-dropdown-container">
+          <button class="profile-btn" onclick="toggleProfileDropdown()" title="Profile">
+            {% if profile.profile_image %}
+              <img src="{{ profile.profile_image.url }}" alt="Profile">
+            {% else %}
+              {{ user.username|slice:":1"|upper }}
+            {% endif %}
+          </button>
+          <div id="profileDropdown" class="profile-dropdown">
+            <div class="profile-dropdown-header">
+              <div class="name">{{ profile.name|default:user.username }}</div>
+              <div class="email">{{ user.email|default:"" }}</div>
+            </div>
+            <a href="{% url 'recom_sys:edit_profile' %}" class="profile-dropdown-item">
+              ⚙️ Edit Profile
+            </a>
+            <form method="post" action="{% url 'recom_sys:logout' %}" style="margin: 0;">
+              {% csrf_token %}
+              <button type="submit" class="profile-dropdown-item logout">
+                🚪 Sign Out
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1295,17 +1536,21 @@
       <button class="mode-tab active" data-mode="solo" onclick="switchMode('solo')">
         🎬 Solo Mode
       </button>
-      <button class="mode-tab" data-mode="private" onclick="switchMode('private')">
-        👥 Private Group
-      </button>
-      <button class="mode-tab" data-mode="active" onclick="switchMode('active')">
-        📋 My Groups
-      </button>
-      <button class="mode-tab" data-mode="similar" onclick="switchMode('similar')">
-        🔍 Similar Movies
-      </button>
+      <div class="groups-dropdown-container">
+        <button class="mode-tab" data-mode="groups" onclick="toggleGroupsDropdown(event)">
+          👥 Groups ▾
+        </button>
+        <div id="groupsDropdown" class="groups-dropdown">
+          <button class="groups-dropdown-item" onclick="switchMode('private'); closeGroupsDropdown();">
+            ➕ Create / Join Group
+          </button>
+          <button class="groups-dropdown-item" onclick="switchMode('active'); closeGroupsDropdown();">
+            📋 My Active Groups
+          </button>
+        </div>
+      </div>
       <button class="mode-tab" data-mode="community" onclick="switchMode('community')">
-        🎭 Communities
+        🎬 Communities
       </button>
     </div>
 
@@ -1318,14 +1563,14 @@
             <span>Solo Discovery</span>
           </div>
           <div class="card-subtitle">
-            Swipe through personalized recommendations tailored just for you
+            Click a movie to start swiping or choose your genres below
           </div>
         </div>
         <div class="card-body">
           <!-- Personalized Movie Preview -->
-          <div class="movie-preview-grid">
+          <div class="movie-preview-grid" style="grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px;">
             {% for movie in solo_movies %}
-            <div class="movie-preview-card">
+            <div class="movie-preview-card clickable-movie" onclick="openRecommendDeck({{ movie.tmdb_id }}, '{{ movie.title|escapejs }}')" style="cursor: pointer;">
               <div class="movie-poster">
                 {% if movie.poster_url %}
                 <img src="{{ movie.poster_url }}" alt="{{ movie.title }}">
@@ -1334,10 +1579,16 @@
                   <span style="font-size: 3rem;">🎬</span>
                 </div>
                 {% endif %}
+                <div class="movie-hover-overlay">
+                  <span>▶ Start Swiping</span>
+                </div>
               </div>
               <div class="movie-info">
                 <div class="movie-title">{{ movie.title }}</div>
-                <div class="movie-genre">{{ movie.genres.0|default:"Movie" }}</div>
+                <div class="movie-meta-row">
+                  {% if movie.vote_average %}<span class="movie-rating">⭐ {{ movie.vote_average|floatformat:1 }}</span>{% endif %}
+                  {% if movie.year %}<span class="movie-year">{{ movie.year }}</span>{% endif %}
+                </div>
               </div>
             </div>
             {% empty %}
@@ -1492,45 +1743,12 @@
       {% endif %}
     </div>
 
-    <!-- Find Similar Movie Content -->
-    <div id="similar-content" class="mode-content">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span style="font-size: 2.5rem;">🔍</span>
-            <span>Similar Movies</span>
-          </div>
-          <div class="card-subtitle">
-            Love a movie? Discover ones just like it based on genre, cast, and themes
-          </div>
-        </div>
-        <div class="card-body">
-          <!-- Search Interface Preview -->
-          <div style="text-align: center; padding: 60px 40px;">
-            <div style="font-size: 5rem; margin-bottom: 30px; opacity: 0.8;">🔍</div>
-            <div style="color: white; font-size: 1.5rem; font-weight: 700; margin-bottom: 15px;">
-              Find Movies Like Your Favorites
-            </div>
-            <div style="color: #999; font-size: 1rem; margin-bottom: 35px; max-width: 500px; margin-left: auto; margin-right: auto; line-height: 1.6;">
-              Search for any movie and discover similar recommendations based on genre, themes, and style
-            </div>
-            <a href="{% url 'recom_sys:movie_search' %}" class="action-link" style="display: inline-flex; padding: 15px 35px; background: rgba(229, 9, 20, 0.1); border: 2px solid #E50914; border-radius: 10px; font-size: 1.1rem;">
-              Start Searching
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Community Mode Content -->
     <div id="community-content" class="mode-content">
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <div class="theater-masks">
-              <span style="color: #E50914;">🎭</span>
-              <span style="color: #ffd700;">🎭</span>
-            </div>
+            <span style="font-size: 2.5rem;">🎬</span>
             <span>Join Communities</span>
           </div>
           <div class="card-subtitle">
@@ -1601,12 +1819,61 @@
       statusEl.style.border = `2px solid ${isSuccess ? '#2ecc71' : '#E50914'}`;
     }
 
+    // Profile Dropdown
+    function toggleProfileDropdown() {
+      const dropdown = document.getElementById('profileDropdown');
+      dropdown.classList.toggle('active');
+      closeGroupsDropdown();
+    }
+
+    // Groups Dropdown
+    function toggleGroupsDropdown(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('groupsDropdown');
+      dropdown.classList.toggle('active');
+      closeProfileDropdown();
+    }
+
+    function closeProfileDropdown() {
+      document.getElementById('profileDropdown').classList.remove('active');
+    }
+
+    function closeGroupsDropdown() {
+      document.getElementById('groupsDropdown').classList.remove('active');
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.profile-dropdown-container')) {
+        closeProfileDropdown();
+      }
+      if (!e.target.closest('.groups-dropdown-container')) {
+        closeGroupsDropdown();
+      }
+    });
+
+    // Open Recommend Deck with selected movie - Start swiping directly!
+    function openRecommendDeck(movieId, movieTitle) {
+      // Redirect to recommend page with the movie ID as a starting point
+      // This will start swiping with the selected movie first, followed by similar movies
+      window.location.href = `{% url 'recom_sys:recommend' %}?movie_id=${movieId}`;
+    }
+
     // Mode Switching
     function switchMode(mode) {
       document.querySelectorAll('.mode-tab').forEach(tab => {
         tab.classList.remove('active');
+        // Mark Groups tab as active if switching to private or active
+        if ((mode === 'private' || mode === 'active') && tab.dataset.mode === 'groups') {
+          tab.classList.add('active');
+        }
       });
-      document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
+      
+      // Only add active to the specific tab if it's not a groups sub-tab
+      const specificTab = document.querySelector(`[data-mode="${mode}"]`);
+      if (specificTab && mode !== 'private' && mode !== 'active') {
+        specificTab.classList.add('active');
+      }
 
       document.querySelectorAll('.mode-content').forEach(content => {
         content.classList.remove('active');

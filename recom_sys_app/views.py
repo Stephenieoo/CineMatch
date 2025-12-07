@@ -526,17 +526,35 @@ def profile_view(request):
     # Fetch personalized movie recommendations for preview sections
     try:
         # Solo Mode - Get personalized recommendations based on user preferences
-        solo_movie_ids = RecommendationService.get_solo_deck(request.user, limit=6)
+        # Request more than needed to ensure we have 14 after filtering
+        solo_movie_ids = RecommendationService.get_solo_deck(request.user, limit=20)
         print(f"[DEBUG profile_view] Solo movie IDs: {solo_movie_ids}")
 
         if solo_movie_ids:
-            solo_movies = _tmdb_fetch_by_ids(solo_movie_ids[:6])
+            # Fetch up to 20 and take first 14 that load successfully
+            solo_movies = _tmdb_fetch_by_ids(solo_movie_ids[:20])
+            solo_movies = solo_movies[:14]  # Limit to 14
             print(f"[DEBUG profile_view] Solo movies fetched: {len(solo_movies)}")
         else:
             # Fallback to popular movies if no recommendations
             print("[DEBUG profile_view] No solo recommendations, using popular movies")
-            fallback_ids = RecommendationService._get_popular_movies(limit=6)
-            solo_movies = _tmdb_fetch_by_ids(fallback_ids[:6]) if fallback_ids else []
+            fallback_ids = RecommendationService._get_popular_movies(limit=20)
+            solo_movies = _tmdb_fetch_by_ids(fallback_ids[:20]) if fallback_ids else []
+            solo_movies = solo_movies[:14]  # Limit to 14
+
+        # If we still don't have enough movies, try to get more popular ones
+        if len(solo_movies) < 14:
+            print(
+                f"[DEBUG profile_view] Only got {len(solo_movies)} movies, fetching more popular movies"
+            )
+            additional_ids = RecommendationService._get_popular_movies(limit=20)
+            existing_ids = {m.get("tmdb_id") for m in solo_movies}
+            additional_ids = [mid for mid in additional_ids if mid not in existing_ids]
+            additional_movies = _tmdb_fetch_by_ids(
+                additional_ids[: 14 - len(solo_movies)]
+            )
+            solo_movies.extend(additional_movies)
+            solo_movies = solo_movies[:14]
 
         # Private Groups - Get popular/trending movies for preview
         # Use user's favorite genres if available, otherwise use popular movies
@@ -672,14 +690,14 @@ def edit_profile_view(request):
     """
     Edit profile view for updating user preferences.
     GET: Display profile edit form
-    POST: Update profile
+    POST: Update profile (including profile image)
     """
     profile, _ = UserProfile.objects.get_or_create(
         user=request.user, defaults={"name": request.user.username}
     )
 
     if request.method == "POST":
-        form = UserProfileForm(request.POST, instance=profile)
+        form = UserProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
             form.instance.user = request.user
             form.save()
@@ -719,16 +737,57 @@ def recommend_view(request):
     """
     Movie recommendation view for Solo mode.
     Generates personalized recommendations based on user history or onboarding preferences.
+    Can optionally start with a specific movie if movie_id is provided.
     """
     try:
+        # Check if a specific movie was selected from homepage
+        start_movie_id = request.GET.get("movie_id")
+        start_movie = None
+
+        if start_movie_id:
+            # Fetch details for the starting movie
+            start_movies = _tmdb_fetch_by_ids([int(start_movie_id)])
+            if start_movies and start_movies[0].get("found", False):
+                start_movie = start_movies[0]
+
         # Use RecommendationService to get personalized solo deck
         movie_ids = RecommendationService.get_solo_deck(request.user, limit=50)
+
+        # If we have a starting movie, get similar movies to it as well
+        if start_movie_id:
+            try:
+                # Fetch similar movies to the selected movie
+                similar_response = requests.get(
+                    f"https://api.themoviedb.org/3/movie/{start_movie_id}/similar",
+                    params={"api_key": settings.TMDB_API_KEY, "page": 1},
+                    timeout=10,
+                )
+                if similar_response.status_code == 200:
+                    similar_data = similar_response.json()
+                    similar_ids = [
+                        m["id"] for m in similar_data.get("results", [])[:20]
+                    ]
+                    # Add similar movies to the deck (deduplicated)
+                    movie_ids = similar_ids + [
+                        mid for mid in movie_ids if mid not in similar_ids
+                    ]
+            except Exception as e:
+                print(f"Error fetching similar movies: {e}")
 
         # Fetch TMDB details for recommended movies
         tmdb_results = _tmdb_fetch_by_ids(movie_ids) if movie_ids else []
 
         # Filter to only successfully fetched movies
         tmdb_results = [m for m in tmdb_results if m.get("found", False)]
+
+        # If we have a starting movie, put it at the beginning
+        if start_movie:
+            # Remove it from results if it exists to avoid duplicates
+            tmdb_results = [
+                m for m in tmdb_results if m.get("tmdb_id") != int(start_movie_id)
+            ]
+            # Add it at the beginning
+            tmdb_results.insert(0, start_movie)
 
         context = {
             "agent_text": "",  # No AI agent text in new implementation
@@ -737,6 +796,7 @@ def recommend_view(request):
             ),  # Convert to JSON string for JavaScript
             "user_movies": _get_signup_movies(request.user),
             "user_genres": _get_signup_genre(request.user),
+            "start_movie_title": start_movie.get("title") if start_movie else None,
         }
 
         return render(request, "recom_sys_app/recommend_cards.html", context)

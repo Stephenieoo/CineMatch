@@ -42,6 +42,14 @@ class UserProfile(models.Model):
         db_index=True,
     )
 
+    # Profile image
+    profile_image = models.ImageField(
+        upload_to="profile_images/",
+        blank=True,
+        null=True,
+        help_text="Upload a profile picture",
+    )
+
     # requested fields
     name = models.CharField(max_length=120)  # display name
     sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNSPECIFIED)
@@ -102,10 +110,15 @@ class UserProfile(models.Model):
 # ---- 2) Interactions table (single source of truth per user x movie) ----
 class Interaction(models.Model):
     class Status(models.TextChoices):
-        LIKE = "LIKE", "Like"
-        DISLIKE = "DISLIKE", "Dislike"
+        LIKE = "LIKE", "Like"  # Want to watch, interested
+        DISLIKE = "DISLIKE", "Dislike"  # Pass, not interested
         WATCH_LATER = "WATCH_LATER", "Watch Later"
-        WATCHED = "WATCHED", "Watched"
+        WATCHED = "WATCHED", "Watched"  # Legacy: watched (neutral)
+        WATCHED_LIKED = "WATCHED_LIKED", "Watched & Liked"  # Watched and enjoyed
+        WATCHED_DISLIKED = (
+            "WATCHED_DISLIKED",
+            "Watched & Disliked",
+        )  # Watched but didn't enjoy
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -114,7 +127,7 @@ class Interaction(models.Model):
         db_index=True,
     )
     tmdb_id = models.IntegerField(db_index=True)
-    status = models.CharField(max_length=12, choices=Status.choices, db_index=True)
+    status = models.CharField(max_length=20, choices=Status.choices, db_index=True)
 
     # helpful extras
     rating = models.PositiveSmallIntegerField(
