@@ -1220,15 +1220,40 @@
                 // Build streaming providers HTML
                 let streamingHTML = '';
                 if (movie.watch_providers) {
-                    const providers = [];
+                    const sections = [];
+
+                    // Streaming (subscription) services
                     if (movie.watch_providers.flatrate && movie.watch_providers.flatrate.length > 0) {
-                        providers.push(...movie.watch_providers.flatrate.map(p =>
-                            `<div class="streaming-provider">📺 ${p.provider_name}</div>`
-                        ));
+                        const flatrateHTML = movie.watch_providers.flatrate.map(p =>
+                            `<span class="streaming-provider">📺 ${p.provider_name}</span>`
+                        ).join('');
+                        sections.push(`<div class="mb-2"><span class="text-gray-400 text-xs">Stream:</span> ${flatrateHTML}</div>`);
                     }
-                    streamingHTML = providers.length > 0
-                        ? providers.join('')
-                        : '<p class="text-gray-400">Streaming information not available</p>';
+
+                    // Rent options
+                    if (movie.watch_providers.rent && movie.watch_providers.rent.length > 0) {
+                        const rentHTML = movie.watch_providers.rent.slice(0, 4).map(p =>
+                            `<span class="streaming-provider">🎬 ${p.provider_name}</span>`
+                        ).join('');
+                        sections.push(`<div class="mb-2"><span class="text-gray-400 text-xs">Rent:</span> ${rentHTML}</div>`);
+                    }
+
+                    // Buy options
+                    if (movie.watch_providers.buy && movie.watch_providers.buy.length > 0) {
+                        const buyHTML = movie.watch_providers.buy.slice(0, 4).map(p =>
+                            `<span class="streaming-provider">🛒 ${p.provider_name}</span>`
+                        ).join('');
+                        sections.push(`<div class="mb-2"><span class="text-gray-400 text-xs">Buy:</span> ${buyHTML}</div>`);
+                    }
+
+                    // Show region info if available
+                    if (sections.length > 0 && movie.watch_providers.region) {
+                        sections.push(`<p class="text-gray-500 text-xs mt-2">📍 Region: ${movie.watch_providers.region}</p>`);
+                    }
+
+                    streamingHTML = sections.length > 0
+                        ? sections.join('')
+                        : '<p class="text-gray-400">No streaming options available in your region</p>';
                 } else {
                     streamingHTML = '<p class="text-gray-400">Streaming information not available</p>';
                 }

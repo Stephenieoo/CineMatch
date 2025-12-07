@@ -20,6 +20,12 @@ from django.contrib.auth import login
 from .forms import UserProfileForm, SignUpForm
 from .models import UserProfile, Interaction, Genre
 from .services import RecommendationService
+from .geolocation import (
+    get_user_region,
+    set_user_region,
+    get_all_regions,
+    SUPPORTED_REGIONS,
+)
 
 # NEW for group
 
@@ -116,6 +122,13 @@ def _tmdb_watch_providers(movie_id: int, region: str = "US"):
     """
     Get streaming platform availability for a movie from TMDB.
     Returns watch provider data (Netflix, Hulu, etc.) for the specified region.
+
+    Args:
+        movie_id: TMDB movie ID
+        region: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "IN")
+
+    Returns:
+        dict with flatrate, rent, buy providers and JustWatch link
     """
     try:
         r = requests.get(
@@ -129,7 +142,9 @@ def _tmdb_watch_providers(movie_id: int, region: str = "US"):
         # Extract providers for the specified region
         results = data.get("results", {}).get(region, {})
 
+        # If no providers found for the user's region, return empty but note the region
         return {
+            "region": region,
             "flatrate": results.get(
                 "flatrate", []
             ),  # Subscription services (Netflix, Disney+, etc.)
@@ -138,10 +153,18 @@ def _tmdb_watch_providers(movie_id: int, region: str = "US"):
             ),  # Rental options (iTunes, Google Play, etc.)
             "buy": results.get("buy", []),  # Purchase options
             "link": results.get("link", ""),  # JustWatch link
+            "available": bool(results),  # Whether movie is available in this region
         }
     except Exception:
         # Return empty dict if API call fails
-        return {"flatrate": [], "rent": [], "buy": [], "link": ""}
+        return {
+            "region": region,
+            "flatrate": [],
+            "rent": [],
+            "buy": [],
+            "link": "",
+            "available": False,
+        }
 
 
 def _tmdb_fetch_all(titles: list[str]) -> list[dict]:
@@ -518,14 +541,18 @@ def profile_view(request):
             fallback_ids = RecommendationService._get_popular_movies(limit=20)
             solo_movies = _tmdb_fetch_by_ids(fallback_ids[:20]) if fallback_ids else []
             solo_movies = solo_movies[:14]  # Limit to 14
-        
+
         # If we still don't have enough movies, try to get more popular ones
         if len(solo_movies) < 14:
-            print(f"[DEBUG profile_view] Only got {len(solo_movies)} movies, fetching more popular movies")
+            print(
+                f"[DEBUG profile_view] Only got {len(solo_movies)} movies, fetching more popular movies"
+            )
             additional_ids = RecommendationService._get_popular_movies(limit=20)
             existing_ids = {m.get("tmdb_id") for m in solo_movies}
             additional_ids = [mid for mid in additional_ids if mid not in existing_ids]
-            additional_movies = _tmdb_fetch_by_ids(additional_ids[:14 - len(solo_movies)])
+            additional_movies = _tmdb_fetch_by_ids(
+                additional_ids[: 14 - len(solo_movies)]
+            )
             solo_movies.extend(additional_movies)
             solo_movies = solo_movies[:14]
 
@@ -737,7 +764,9 @@ def recommend_view(request):
                 )
                 if similar_response.status_code == 200:
                     similar_data = similar_response.json()
-                    similar_ids = [m["id"] for m in similar_data.get("results", [])[:20]]
+                    similar_ids = [
+                        m["id"] for m in similar_data.get("results", [])[:20]
+                    ]
                     # Add similar movies to the deck (deduplicated)
                     movie_ids = similar_ids + [
                         mid for mid in movie_ids if mid not in similar_ids
@@ -846,12 +875,16 @@ def movie_details_view(request, tmdb_id: int):
     """
     Get detailed information about a specific movie.
     Includes TMDB data and user's interaction status.
+    Uses user's detected/preferred region for watch providers.
     """
     try:
         movie_data = _tmdb_details(tmdb_id, append="videos,credits,recommendations")
 
-        # Fetch watch providers (where to watch)
-        watch_providers = _tmdb_watch_providers(tmdb_id)
+        # Get user's region for watch providers
+        user_region = get_user_region(request)
+
+        # Fetch watch providers (where to watch) for user's region
+        watch_providers = _tmdb_watch_providers(tmdb_id, region=user_region)
 
         # Check if user has interacted with this movie
         interaction = None
@@ -1549,3 +1582,79 @@ def leave_community(request, group_id):
             {"success": False, "message": f"Failed to leave community: {str(e)}"},
             status=500,
         )
+
+
+# ============================================
+# REGION / GEOLOCATION API ENDPOINTS
+# ============================================
+
+
+@login_required
+@require_http_methods(["GET"])
+def get_user_region_api(request):
+    """
+    Get the user's detected or preferred region.
+    Used for filtering movies by regional availability.
+
+    Returns:
+        JSON with region code, name, and available regions list
+    """
+    from .geolocation import REGION_NAMES
+
+    region = get_user_region(request)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "region": {
+                "code": region,
+                "name": REGION_NAMES.get(region, region),
+            },
+            "available_regions": get_all_regions(),
+        }
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def set_user_region_api(request):
+    """
+    Manually set the user's preferred region.
+    Allows users to override the auto-detected region.
+
+    Body: {"region": "US"}
+    """
+    try:
+        data = json.loads(request.body)
+        region_code = data.get("region", "").strip().upper()
+
+        if not region_code:
+            return JsonResponse(
+                {"success": False, "message": "Region code is required"}, status=400
+            )
+
+        if region_code not in SUPPORTED_REGIONS:
+            return JsonResponse(
+                {"success": False, "message": f"Invalid region code: {region_code}"},
+                status=400,
+            )
+
+        set_user_region(request, region_code)
+
+        from .geolocation import REGION_NAMES
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": f"Region set to {REGION_NAMES.get(region_code, region_code)}",
+                "region": {
+                    "code": region_code,
+                    "name": REGION_NAMES.get(region_code, region_code),
+                },
+            }
+        )
+
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+    except Exception as e:
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
