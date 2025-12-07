@@ -16,6 +16,7 @@ import requests
 
 from dotenv import load_dotenv
 from .models import Interaction
+from .geolocation import get_user_region
 
 # Load environment variables
 load_dotenv(settings.BASE_DIR / ".env")
@@ -222,6 +223,9 @@ def get_solo_deck(request):
         except ValueError:
             limit = 20
 
+        # Get user's region for watch providers
+        user_region = get_user_region(request)
+
         # Get movies from TMDB based on selected genres
         movies = _fetch_movies_by_genres(selected_genres, limit)
 
@@ -233,12 +237,19 @@ def get_solo_deck(request):
         )
         movies = [m for m in movies if m["tmdb_id"] not in swiped_ids]
 
+        # Add watch providers for each movie based on user's region
+        for movie in movies:
+            movie["watch_providers"] = _fetch_watch_providers(
+                movie["tmdb_id"], user_region
+            )
+
         return JsonResponse(
             {
                 "success": True,
                 "movies": movies,
                 "total": len(movies),
                 "selected_genres": selected_genres,
+                "region": user_region,
             }
         )
 
@@ -579,6 +590,47 @@ def _fetch_movies_by_genres(genre_ids: list, limit: int = 20) -> list:
             continue
 
     return movies
+
+
+def _fetch_watch_providers(movie_id: int, region: str = "US") -> dict:
+    """
+    Fetch watch providers for a movie from TMDB
+
+    Args:
+        movie_id: TMDB movie ID
+        region: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "IN")
+
+    Returns:
+        Dictionary with flatrate, rent, buy providers
+    """
+    try:
+        r = requests.get(
+            f"{TMDB_BASE}/movie/{movie_id}/watch/providers",
+            headers=TMDB_HEADERS,
+            timeout=5,
+        )
+        r.raise_for_status()
+        data = r.json()
+
+        results = data.get("results", {}).get(region, {})
+
+        return {
+            "region": region,
+            "flatrate": results.get("flatrate", []),
+            "rent": results.get("rent", []),
+            "buy": results.get("buy", []),
+            "link": results.get("link", ""),
+            "available": bool(results),
+        }
+    except Exception:
+        return {
+            "region": region,
+            "flatrate": [],
+            "rent": [],
+            "buy": [],
+            "link": "",
+            "available": False,
+        }
 
 
 def _tmdb_fetch_by_ids(movie_ids: list) -> list:

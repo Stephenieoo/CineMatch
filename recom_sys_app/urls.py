@@ -15,6 +15,8 @@ from .views import (
     leave_group,
     delete_group,
     leave_community,
+    get_user_region_api,
+    set_user_region_api,
 )
 from .views_auth import signup_view
 from .views_group import (
@@ -175,6 +177,9 @@ urlpatterns = [
         leave_community,
         name="leave_community",
     ),
+    # Region/Geolocation API Endpoints
+    path("api/region/", get_user_region_api, name="get_user_region"),
+    path("api/region/set/", set_user_region_api, name="set_user_region"),
     path(
         "api/communities/<str:group_code>/deck/",
         views_community.get_community_deck,
