@@ -19,22 +19,23 @@ def websocket_settings(request):
     cloudfront_domain = getattr(settings, "CLOUDFRONT_DOMAIN", "")
     use_https = getattr(settings, "USE_HTTPS", False)
 
-    # For media files: if accessed via CloudFront, use EB domain
-    # CloudFront doesn't serve /media/ files, so we need to use EB directly
+    # For media files: Use CloudFront when available (best solution)
+    # If CloudFront is configured to serve /media/*, use it
+    # Otherwise, fall back to EB domain (will have mixed content issues)
     media_host = ""
-    media_protocol = "http"
+    media_protocol = "https" if (request.is_secure() or use_https) else "http"
     host = request.get_host()
-    is_secure = request.is_secure() or use_https
 
     if cloudfront_domain and cloudfront_domain in host:
-        # User is accessing via CloudFront - use EB domain for media
-        if production_domain:
-            media_host = production_domain
-        elif websocket_host:
-            media_host = websocket_host
-        # Use HTTPS for media when page is HTTPS (even if EB doesn't have SSL, browser will upgrade)
-        if is_secure:
-            media_protocol = "https"
+        # User is accessing via CloudFront
+        # Try to use CloudFront for media (if configured to serve /media/*)
+        # This avoids mixed content issues
+        media_host = host  # Use CloudFront domain
+        media_protocol = "https"
+    elif production_domain or websocket_host:
+        # Fallback: Use EB domain (will have mixed content if page is HTTPS)
+        media_host = production_domain or websocket_host
+        media_protocol = "http"  # EB doesn't have SSL
 
     return {
         "WEBSOCKET_HOST": websocket_host,
