@@ -69,6 +69,7 @@ INSTALLED_APPS = [
 if DEBUG:
     try:
         import sslserver  # noqa: F401
+
         INSTALLED_APPS.append("sslserver")
     except ImportError:
         pass  # sslserver not installed, skip
@@ -116,20 +117,20 @@ USE_HTTPS = os.getenv("USE_HTTPS", "False") == "True"
 if USE_HTTPS:
     # Redirect all HTTP requests to HTTPS
     SECURE_SSL_REDIRECT = True
-    
+
     # Trust the X-Forwarded-Proto header from the load balancer
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    
+
     # HTTP Strict Transport Security (HSTS)
     # Start with 1 hour, increase to 31536000 (1 year) after testing
     SECURE_HSTS_SECONDS = 3600
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    
+
     # Secure cookies
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    
+
     # Additional security headers
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -156,16 +157,20 @@ CORS_ALLOWED_ORIGINS = [
 
 # Add production domain if set
 if PRODUCTION_DOMAIN:
-    CORS_ALLOWED_ORIGINS.extend([
-        f"https://{PRODUCTION_DOMAIN}",
-        f"http://{PRODUCTION_DOMAIN}",
-    ])
+    CORS_ALLOWED_ORIGINS.extend(
+        [
+            f"https://{PRODUCTION_DOMAIN}",
+            f"http://{PRODUCTION_DOMAIN}",
+        ]
+    )
 
 # Add CloudFront domain if set
 if CLOUDFRONT_DOMAIN:
-    CORS_ALLOWED_ORIGINS.extend([
-        f"https://{CLOUDFRONT_DOMAIN}",
-    ])
+    CORS_ALLOWED_ORIGINS.extend(
+        [
+            f"https://{CLOUDFRONT_DOMAIN}",
+        ]
+    )
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -182,16 +187,20 @@ CSRF_TRUSTED_ORIGINS = [
 
 # Add production domain if set
 if PRODUCTION_DOMAIN:
-    CSRF_TRUSTED_ORIGINS.extend([
-        f"https://{PRODUCTION_DOMAIN}",
-        f"http://{PRODUCTION_DOMAIN}",
-    ])
+    CSRF_TRUSTED_ORIGINS.extend(
+        [
+            f"https://{PRODUCTION_DOMAIN}",
+            f"http://{PRODUCTION_DOMAIN}",
+        ]
+    )
 
 # Add CloudFront domain if set
 if CLOUDFRONT_DOMAIN:
-    CSRF_TRUSTED_ORIGINS.extend([
-        f"https://{CLOUDFRONT_DOMAIN}",
-    ])
+    CSRF_TRUSTED_ORIGINS.extend(
+        [
+            f"https://{CLOUDFRONT_DOMAIN}",
+        ]
+    )
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
