@@ -713,22 +713,22 @@
     const currentUsername = '{{ request.user.username }}';
 
     function connectChatWebSocket() {
-      // CloudFront doesn't support WebSockets - always use EB domain
-      let wsHost = '{{ WEBSOCKET_HOST }}';
+      // CloudFront DOES support WebSockets - use it when available
       const isCloudFront = window.location.hostname.includes('cloudfront.net');
+      let wsHost;
+      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
-      if (!wsHost) {
-        if (isCloudFront) {
-          console.error('[WebSocket] CloudFront detected but WEBSOCKET_HOST not set!');
-          wsHost = 'cinematch-production.eba-mixpvdvh.us-east-1.elasticbeanstalk.com';
-        } else {
-          wsHost = window.location.host;
+      if (isCloudFront) {
+        // Use CloudFront for WebSocket (it supports WebSocket proxying)
+        wsHost = window.location.host;
+        console.log('[WebSocket] Using CloudFront for WebSocket connection');
+      } else {
+        // Direct connection to EB (for local dev or direct EB access)
+        wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+        if (window.location.protocol === 'http:') {
+          wsProtocol = 'ws:';
         }
       }
-      
-      // Use wss:// when page is HTTPS (required by browser security)
-      // Even if EB doesn't have SSL, we must use wss:// to avoid mixed content blocking
-      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
       const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${groupCode}/`;
       console.log('[WebSocket] Connecting to:', chatWsUrl, 'from origin:', window.location.origin);
