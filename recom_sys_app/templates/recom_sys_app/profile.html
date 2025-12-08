@@ -1498,7 +1498,7 @@
           <button class="profile-btn" onclick="toggleProfileDropdown()" title="Profile" id="profileBtn">
             {% if profile.profile_image %}
               {% if MEDIA_HOST %}
-                <img src="{% if USE_HTTPS %}https{% else %}http{% endif %}://{{ MEDIA_HOST }}{{ profile.profile_image.url }}" alt="Profile" id="profileBtnImg" onerror="this.style.display='none'; this.parentElement.innerHTML='{{ user.username|slice:":1"|upper }}';">
+                <img src="{{ MEDIA_PROTOCOL }}://{{ MEDIA_HOST }}{{ profile.profile_image.url }}" alt="Profile" id="profileBtnImg" onerror="this.style.display='none'; this.parentElement.innerHTML='{{ user.username|slice:":1"|upper }}';">
               {% else %}
                 <img src="{{ profile.profile_image.url }}" alt="Profile" id="profileBtnImg" onerror="this.style.display='none'; this.parentElement.innerHTML='{{ user.username|slice:":1"|upper }}';">
               {% endif %}

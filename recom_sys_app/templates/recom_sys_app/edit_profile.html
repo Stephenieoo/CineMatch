@@ -464,7 +464,7 @@
         <div class="profile-image-preview" id="profileImagePreview">
           {% if form.instance.profile_image %}
             {% if MEDIA_HOST %}
-              <img src="{% if USE_HTTPS %}https{% else %}http{% endif %}://{{ MEDIA_HOST }}{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
+              <img src="{{ MEDIA_PROTOCOL }}://{{ MEDIA_HOST }}{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
             {% else %}
               <img src="{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
             {% endif %}

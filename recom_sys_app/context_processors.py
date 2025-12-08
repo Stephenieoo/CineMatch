@@ -22,17 +22,24 @@ def websocket_settings(request):
     # For media files: if accessed via CloudFront, use EB domain
     # CloudFront doesn't serve /media/ files, so we need to use EB directly
     media_host = ""
+    media_protocol = "http"
     host = request.get_host()
+    is_secure = request.is_secure() or use_https
+
     if cloudfront_domain and cloudfront_domain in host:
         # User is accessing via CloudFront - use EB domain for media
         if production_domain:
             media_host = production_domain
         elif websocket_host:
             media_host = websocket_host
+        # Use HTTPS for media when page is HTTPS (even if EB doesn't have SSL, browser will upgrade)
+        if is_secure:
+            media_protocol = "https"
 
     return {
         "WEBSOCKET_HOST": websocket_host,
         "USE_HTTPS": use_https,
         "MEDIA_HOST": media_host,
+        "MEDIA_PROTOCOL": media_protocol,
         "PRODUCTION_DOMAIN": production_domain,
     }

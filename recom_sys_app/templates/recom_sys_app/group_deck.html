@@ -1254,15 +1254,10 @@
                 }
             }
             
-            // Use ws:// for EB (load balancer doesn't have SSL configured)
-            // Only use wss:// if explicitly configured or connecting to same host with HTTPS
-            let wsProtocol = 'ws:';
-            if (wsHost === window.location.host && window.location.protocol === 'https:') {
-                wsProtocol = 'wss:';
-            } else if ('{{ USE_HTTPS }}' === 'True' && wsHost.includes('cloudfront.net')) {
-                wsProtocol = 'wss:';
-            }
-            // For direct EB connections, use ws:// (EB load balancer doesn't have SSL)
+            // Use wss:// when page is HTTPS (required by browser security)
+            // Even if EB doesn't have SSL, we must use wss:// to avoid mixed content blocking
+            // If EB doesn't have SSL, the connection will fail and we'll show an error
+            let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
             // Connect to chat WebSocket
             const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${GROUP_CODE}/`;
@@ -1292,13 +1287,21 @@
                 console.log('[Chat] WebSocket closed:', e.code, e.reason);
                 if (e.code !== 1000) {  // Not a normal closure
                     // Show error message to user
-                    alert('Chat connection lost. Please refresh the page.');
+                    let errorMsg = 'Chat connection lost. ';
+                    if (e.code === 1006 && wsProtocol === 'wss:') {
+                        errorMsg += 'The server may not have SSL configured. Please configure SSL on Elastic Beanstalk to enable WebSocket connections.';
+                    }
+                    alert(errorMsg);
                 }
             };
 
             chatSocket.onerror = function(e) {
                 console.error('[Chat] WebSocket error:', e);
-                alert('Chat connection error. Please refresh the page.');
+                let errorMsg = 'Chat connection error. ';
+                if (wsProtocol === 'wss:') {
+                    errorMsg += 'If this persists, SSL may need to be configured on the server.';
+                }
+                alert(errorMsg);
             };
 
             // Connect to match WebSocket (only for private groups, not communities)
