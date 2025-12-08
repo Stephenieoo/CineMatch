@@ -314,14 +314,25 @@ AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "")
 # Determine default file storage backend
 if AWS_STORAGE_BUCKET_NAME:
     # Use S3 for media files
-    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN or f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'}/media/"
-    MEDIA_ROOT = ""  # Not used when using S3
-    AWS_S3_FILE_OVERWRITE = False
-    AWS_DEFAULT_ACL = "public-read"
-    AWS_S3_OBJECT_PARAMETERS = {
-        "CacheControl": "max-age=86400",  # Cache for 1 day
-    }
+    try:
+        import storages  # noqa: F401
+
+        DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+        MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN or f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'}/media/"
+        MEDIA_ROOT = ""  # Not used when using S3
+        AWS_S3_FILE_OVERWRITE = False
+        AWS_DEFAULT_ACL = "public-read"
+        AWS_S3_OBJECT_PARAMETERS = {
+            "CacheControl": "max-age=86400",  # Cache for 1 day
+        }
+        # AWS credentials are handled by IAM role on EB instances
+        # No need to set AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY
+    except ImportError:
+        # Fallback to filesystem if django-storages not installed
+        print("[WARNING] django-storages not installed, using filesystem storage")
+        DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+        MEDIA_URL = "/media/"
+        MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 else:
     # Use local filesystem for media files
     DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
