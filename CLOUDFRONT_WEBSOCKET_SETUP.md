@@ -55,6 +55,41 @@ Make sure these headers are forwarded to origin:
 - `Sec-WebSocket-Protocol`
 - `Origin`
 
+#### How to Verify Headers Are Forwarded
+
+1. **In CloudFront Console:**
+   - Go to your distribution → **Behaviors** tab
+   - Click on the `/ws/*` behavior (or default `*` behavior)
+   - Click **Edit**
+   - Scroll to **"Cache key and origin requests"** section
+   - Look at **"Origin request policy"**
+   - If it says **"AllViewer"**, all headers are forwarded ✅
+   - If it's a different policy, click on it to see which headers are included
+
+2. **Check Origin Request Policy Details:**
+   - In the behavior editor, click the policy name (e.g., "AllViewer")
+   - Or go to **CloudFront** → **Policies** → **Origin request** tab
+   - Find your policy and click on it
+   - Under **"Headers"** section, you should see:
+     - `*` (all headers) OR
+     - Specific headers listed including `Upgrade`, `Connection`, etc.
+
+3. **What "AllViewer" Policy Includes:**
+   - The **"AllViewer"** managed policy forwards:
+     - All query strings
+     - All headers (including WebSocket headers)
+     - All cookies
+   - This is the easiest option and ensures WebSocket headers are forwarded ✅
+
+4. **If Using Custom Policy:**
+   - Make sure these headers are in the "Include headers" list:
+     - `Upgrade` (required for WebSocket upgrade)
+     - `Connection` (required for WebSocket upgrade)
+     - `Sec-WebSocket-Key` (required for WebSocket handshake)
+     - `Sec-WebSocket-Version` (required for WebSocket handshake)
+     - `Sec-WebSocket-Protocol` (optional, for subprotocols)
+     - `Origin` (required for CORS/security)
+
 #### Cache Settings
 - **TTL**: Set to 0 or use "CachingDisabled" policy for `/ws/*` paths
 - WebSocket connections are stateful and cannot be cached
