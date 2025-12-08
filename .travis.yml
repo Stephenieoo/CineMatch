@@ -62,6 +62,8 @@ deploy:
   bucket_name: elasticbeanstalk-us-east-1-028210901732
   bucket_path: cinematch-app
   skip_cleanup: true
+  # Ensure credentials are properly set
+  edge: true
   on:
     branch: develop
     python: "3.12"
