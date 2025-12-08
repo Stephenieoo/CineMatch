@@ -611,8 +611,10 @@
     const currentUsername = '{{ request.user.username }}';
 
     function connectChatWebSocket() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const chatWsUrl = `${protocol}//${window.location.host}/ws/chat/${groupCode}/`;
+      // Use WEBSOCKET_HOST if configured (for CloudFront), otherwise use page host
+      const wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+      const wsProtocol = (window.location.protocol === 'https:' || '{{ USE_HTTPS }}' === 'True') ? 'wss:' : 'ws:';
+      const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${groupCode}/`;
 
       chatSocket = new WebSocket(chatWsUrl);
 

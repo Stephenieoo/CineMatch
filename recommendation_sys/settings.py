@@ -33,7 +33,18 @@ SECRET_KEY = os.getenv(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
+# Production domain settings (defined early for use in ALLOWED_HOSTS)
+PRODUCTION_DOMAIN = os.getenv("PRODUCTION_DOMAIN", "")
+CLOUDFRONT_DOMAIN = os.getenv("CLOUDFRONT_DOMAIN", "")
+
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+
+# Always allow CloudFront domains
+if CLOUDFRONT_DOMAIN and CLOUDFRONT_DOMAIN not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(CLOUDFRONT_DOMAIN)
+# Allow all cloudfront.net subdomains if in production
+if ".cloudfront.net" not in ALLOWED_HOSTS and os.getenv("USE_HTTPS", "False") == "True":
+    ALLOWED_HOSTS.append(".cloudfront.net")
 
 
 # Application definition
@@ -53,6 +64,14 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
 ]
+
+# Add SSL server for local HTTPS development (only in DEBUG mode)
+if DEBUG:
+    try:
+        import sslserver  # noqa: F401
+        INSTALLED_APPS.append("sslserver")
+    except ImportError:
+        pass  # sslserver not installed, skip
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -88,13 +107,91 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
 }
 ROOT_URLCONF = "recommendation_sys.urls"
+# ============================================================================
+# HTTPS/SSL Security Settings
+# ============================================================================
+# Check if we're in production (HTTPS enabled)
+USE_HTTPS = os.getenv("USE_HTTPS", "False") == "True"
+
+if USE_HTTPS:
+    # Redirect all HTTP requests to HTTPS
+    SECURE_SSL_REDIRECT = True
+    
+    # Trust the X-Forwarded-Proto header from the load balancer
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    
+    # HTTP Strict Transport Security (HSTS)
+    # Start with 1 hour, increase to 31536000 (1 year) after testing
+    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Secure cookies
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    # Additional security headers
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = "DENY"
+else:
+    # Development settings - no HTTPS redirect
+    SECURE_SSL_REDIRECT = False
+
+# ============================================================================
+# CORS Configuration
+# ============================================================================
+# WebSocket host - if CloudFront doesn't proxy WebSockets well, set this to your EB domain
+# Leave empty to use the same host as the page (works if CloudFront proxies WebSockets)
+WEBSOCKET_HOST = os.getenv("WEBSOCKET_HOST", "")
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
     "http://localhost:8000",
+    "https://localhost:5173",
+    "https://localhost:3000",
+    "https://localhost:8000",
 ]
+
+# Add production domain if set
+if PRODUCTION_DOMAIN:
+    CORS_ALLOWED_ORIGINS.extend([
+        f"https://{PRODUCTION_DOMAIN}",
+        f"http://{PRODUCTION_DOMAIN}",
+    ])
+
+# Add CloudFront domain if set
+if CLOUDFRONT_DOMAIN:
+    CORS_ALLOWED_ORIGINS.extend([
+        f"https://{CLOUDFRONT_DOMAIN}",
+    ])
+
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
+
+# ============================================================================
+# CSRF Trusted Origins
+# ============================================================================
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://localhost:5173",
+    "https://localhost:3000",
+    "https://*.cloudfront.net",  # Allow all CloudFront distributions
+]
+
+# Add production domain if set
+if PRODUCTION_DOMAIN:
+    CSRF_TRUSTED_ORIGINS.extend([
+        f"https://{PRODUCTION_DOMAIN}",
+        f"http://{PRODUCTION_DOMAIN}",
+    ])
+
+# Add CloudFront domain if set
+if CLOUDFRONT_DOMAIN:
+    CSRF_TRUSTED_ORIGINS.extend([
+        f"https://{CLOUDFRONT_DOMAIN}",
+    ])
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -105,6 +202,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "recom_sys_app.context_processors.websocket_settings",
             ],
         },
     },

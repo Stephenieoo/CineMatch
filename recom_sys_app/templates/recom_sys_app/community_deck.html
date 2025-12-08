@@ -1168,10 +1168,12 @@
         // ==================== WebSocket Functions ====================
 
         function connectWebSockets() {
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // Use WEBSOCKET_HOST if configured (for CloudFront), otherwise use page host
+            const wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+            const wsProtocol = (window.location.protocol === 'https:' || '{{ USE_HTTPS }}' === 'True') ? 'wss:' : 'ws:';
             
             // Connect to chat WebSocket
-            const chatWsUrl = `${wsProtocol}//${window.location.host}/ws/chat/${GROUP_CODE}/`;
+            const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${GROUP_CODE}/`;
             chatSocket = new WebSocket(chatWsUrl);
 
             chatSocket.onopen = function(e) {
@@ -1204,7 +1206,7 @@
 
             // Connect to match WebSocket (only for private groups, not communities)
             if (!IS_COMMUNITY) {
-                const matchWsUrl = `${wsProtocol}//${window.location.host}/ws/match/${GROUP_CODE}/`;
+                const matchWsUrl = `${wsProtocol}//${wsHost}/ws/match/${GROUP_CODE}/`;
                 matchSocket = new WebSocket(matchWsUrl);
 
                 matchSocket.onopen = function(e) {
