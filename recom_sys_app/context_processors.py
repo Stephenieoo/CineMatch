@@ -19,23 +19,33 @@ def websocket_settings(request):
     cloudfront_domain = getattr(settings, "CLOUDFRONT_DOMAIN", "")
     use_https = getattr(settings, "USE_HTTPS", False)
 
-    # For media files: Use CloudFront when available (best solution)
-    # If CloudFront is configured to serve /media/*, use it
-    # Otherwise, fall back to EB domain (will have mixed content issues)
-    media_host = ""
-    media_protocol = "https" if (request.is_secure() or use_https) else "http"
-    host = request.get_host()
+    # For media files: Use S3 if configured, otherwise CloudFront/EB
+    # S3 is the best solution - it provides HTTPS and scalability
+    from django.conf import settings
 
-    if cloudfront_domain and cloudfront_domain in host:
-        # User is accessing via CloudFront
-        # Try to use CloudFront for media (if configured to serve /media/*)
-        # This avoids mixed content issues
-        media_host = host  # Use CloudFront domain
+    aws_bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "")
+    aws_custom_domain = getattr(settings, "AWS_S3_CUSTOM_DOMAIN", "")
+
+    if aws_bucket:
+        # Using S3 - media URLs are already absolute S3 URLs
+        # No need to override, Django will generate correct S3 URLs
+        media_host = ""
         media_protocol = "https"
-    elif production_domain or websocket_host:
-        # Fallback: Use EB domain (will have mixed content if page is HTTPS)
-        media_host = production_domain or websocket_host
-        media_protocol = "http"  # EB doesn't have SSL
+    else:
+        # Fallback: Use CloudFront or EB domain
+        media_host = ""
+        media_protocol = "https" if (request.is_secure() or use_https) else "http"
+        host = request.get_host()
+
+        if cloudfront_domain and cloudfront_domain in host:
+            # User is accessing via CloudFront
+            # Try to use CloudFront for media (if configured to serve /media/*)
+            media_host = host
+            media_protocol = "https"
+        elif production_domain or websocket_host:
+            # Fallback: Use EB domain (will have mixed content if page is HTTPS)
+            media_host = production_domain or websocket_host
+            media_protocol = "http"  # EB doesn't have SSL
 
     return {
         "WEBSOCKET_HOST": websocket_host,

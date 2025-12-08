@@ -57,3 +57,7 @@ Pillow>=10.0.0
 
 # Local HTTPS development (optional - for testing SSL locally)
 django-sslserver>=0.22
+
+# S3 storage for media files
+django-storages>=1.14.2
+boto3>=1.34.0
