@@ -716,7 +716,10 @@ def edit_profile_view(request):
             if request.POST.get("profile_image-clear") == "on":
                 # Delete the old image file if it exists
                 if profile.profile_image:
-                    profile.profile_image.delete(save=False)
+                    try:
+                        profile.profile_image.delete(save=False)
+                    except Exception as e:
+                        print(f"[Profile Edit] Error deleting old image: {e}")
                 form.instance.profile_image = None
             # Handle new image upload - ensure it's saved
             elif "profile_image" in request.FILES:
@@ -726,9 +729,21 @@ def edit_profile_view(request):
                 form.instance.profile_image = uploaded_file
                 print(f"[Profile Edit] Assigning uploaded file: {uploaded_file.name}")
 
-            profile = form.save()
-            print(f"[Profile Edit] Profile saved. Image: {profile.profile_image}")
-            return redirect("recom_sys:profile")
+            try:
+                profile = form.save()
+                print(f"[Profile Edit] Profile saved. Image: {profile.profile_image}")
+                return redirect("recom_sys:profile")
+            except Exception as e:
+                print(f"[Profile Edit] Error saving profile: {e}")
+                import traceback
+
+                traceback.print_exc()
+                # Re-render form with error
+                return render(
+                    request,
+                    "recom_sys_app/edit_profile.html",
+                    {"form": form, "error": f"Error saving profile: {str(e)}"},
+                )
         else:
             # Log form errors for debugging
             print(f"[Profile Edit] Form errors: {form.errors}")

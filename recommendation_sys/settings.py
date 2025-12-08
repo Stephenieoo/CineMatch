@@ -321,12 +321,15 @@ if AWS_STORAGE_BUCKET_NAME:
         MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN or f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'}/media/"
         MEDIA_ROOT = ""  # Not used when using S3
         AWS_S3_FILE_OVERWRITE = False
-        AWS_DEFAULT_ACL = "public-read"
+        # Set ACL to None if bucket has ACLs disabled (bucket policy handles access)
+        # Otherwise use public-read for public access
+        AWS_DEFAULT_ACL = None  # Let bucket policy handle public access
         AWS_S3_OBJECT_PARAMETERS = {
             "CacheControl": "max-age=86400",  # Cache for 1 day
         }
         # AWS credentials are handled by IAM role on EB instances
         # No need to set AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY
+        # Ensure the IAM role has s3:PutObject, s3:GetObject, s3:DeleteObject permissions
     except ImportError:
         # Fallback to filesystem if django-storages not installed
         print("[WARNING] django-storages not installed, using filesystem storage")
