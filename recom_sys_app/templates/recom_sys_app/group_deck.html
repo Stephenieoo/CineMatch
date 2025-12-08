@@ -1239,12 +1239,27 @@
         // ==================== WebSocket Functions ====================
 
         function connectWebSockets() {
-            // Use WEBSOCKET_HOST if configured (for CloudFront), otherwise use page host
-            const wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+            // CloudFront doesn't support WebSockets - always use EB domain
+            // If WEBSOCKET_HOST is set, use it; otherwise detect if we're on CloudFront
+            let wsHost = '{{ WEBSOCKET_HOST }}';
+            const isCloudFront = window.location.hostname.includes('cloudfront.net');
+            
+            if (!wsHost) {
+                if (isCloudFront) {
+                    // On CloudFront - need EB domain (should be set in env, but fallback)
+                    console.error('[WebSocket] CloudFront detected but WEBSOCKET_HOST not set!');
+                    wsHost = 'cinematch-production.eba-mixpvdvh.us-east-1.elasticbeanstalk.com';
+                } else {
+                    wsHost = window.location.host;
+                }
+            }
+            
+            // Always use wss: if page is HTTPS or USE_HTTPS is True
             const wsProtocol = (window.location.protocol === 'https:' || '{{ USE_HTTPS }}' === 'True') ? 'wss:' : 'ws:';
 
             // Connect to chat WebSocket
             const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${GROUP_CODE}/`;
+            console.log('[WebSocket] Connecting to:', chatWsUrl);
             chatSocket = new WebSocket(chatWsUrl);
 
             chatSocket.onopen = function(e) {
@@ -1267,17 +1282,22 @@
             };
 
             chatSocket.onclose = function(e) {
-                console.log('[Chat] WebSocket closed:', e.code);
-                // setTimeout(connectWebSockets, 3000);
+                console.log('[Chat] WebSocket closed:', e.code, e.reason);
+                if (e.code !== 1000) {  // Not a normal closure
+                    // Show error message to user
+                    alert('Chat connection lost. Please refresh the page.');
+                }
             };
 
             chatSocket.onerror = function(e) {
                 console.error('[Chat] WebSocket error:', e);
+                alert('Chat connection error. Please refresh the page.');
             };
 
             // Connect to match WebSocket (only for private groups, not communities)
             if (!IS_COMMUNITY) {
                 const matchWsUrl = `${wsProtocol}//${wsHost}/ws/match/${GROUP_CODE}/`;
+                console.log('[WebSocket] Connecting match to:', matchWsUrl);
                 matchSocket = new WebSocket(matchWsUrl);
 
                 matchSocket.onopen = function(e) {

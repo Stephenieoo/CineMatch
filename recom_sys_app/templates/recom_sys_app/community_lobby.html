@@ -611,10 +611,22 @@
     const currentUsername = '{{ request.user.username }}';
 
     function connectChatWebSocket() {
-      // Use WEBSOCKET_HOST if configured (for CloudFront), otherwise use page host
-      const wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+      // CloudFront doesn't support WebSockets - always use EB domain
+      let wsHost = '{{ WEBSOCKET_HOST }}';
+      const isCloudFront = window.location.hostname.includes('cloudfront.net');
+      
+      if (!wsHost) {
+        if (isCloudFront) {
+          console.error('[WebSocket] CloudFront detected but WEBSOCKET_HOST not set!');
+          wsHost = 'cinematch-production.eba-mixpvdvh.us-east-1.elasticbeanstalk.com';
+        } else {
+          wsHost = window.location.host;
+        }
+      }
+      
       const wsProtocol = (window.location.protocol === 'https:' || '{{ USE_HTTPS }}' === 'True') ? 'wss:' : 'ws:';
       const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${groupCode}/`;
+      console.log('[WebSocket] Connecting to:', chatWsUrl);
 
       chatSocket = new WebSocket(chatWsUrl);
 

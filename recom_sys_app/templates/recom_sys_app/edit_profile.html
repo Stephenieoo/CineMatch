@@ -454,7 +454,7 @@
       <p>Customize your CineMatch experience</p>
     </div>
 
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" id="profileForm" onsubmit="return validateForm(event)">
       {% csrf_token %}
 
       <!-- Profile Picture -->
@@ -476,7 +476,7 @@
           {% endif %}
         </div>
         <div style="display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 15px;">
-          <label for="{{ form.profile_image.id_for_label }}" class="upload-label" style="margin: 0;">
+          <label for="id_profile_image" class="upload-label" style="margin: 0;">
             📸 Choose Image
           </label>
           {% if form.instance.profile_image %}
@@ -485,7 +485,8 @@
           </button>
           {% endif %}
         </div>
-        <input type="file" name="profile_image" id="{{ form.profile_image.id_for_label }}" accept="image/*" class="profile-image-input">
+        <!-- File input - name must match form field exactly -->
+        <input type="file" name="profile_image" id="id_profile_image" accept="image/*" class="profile-image-input" style="display: none;">
         <input type="hidden" name="profile_image-clear" id="profileImageClear" value="">
         <p style="color: #666; font-size: 0.85rem; margin-top: 10px;">Supported formats: JPG, PNG, GIF (max 5MB)</p>
       </div>
@@ -669,6 +670,32 @@
         });
       }
     });
+
+    // Form validation before submission
+    function validateForm(event) {
+      const imageInput = document.getElementById('id_profile_image');
+      const form = document.getElementById('profileForm');
+      
+      // Check if a new file was selected
+      if (imageInput && imageInput.files && imageInput.files.length > 0) {
+        const file = imageInput.files[0];
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        
+        if (file.size > maxSize) {
+          event.preventDefault();
+          alert('Image size must be less than 5MB. Please choose a smaller file.');
+          return false;
+        }
+        
+        // Ensure file is included in form
+        console.log('[Form] Submitting with file:', file.name, file.size);
+      } else {
+        console.log('[Form] No new file selected');
+      }
+      
+      // Form will submit normally
+      return true;
+    }
   </script>
 </body>
 </html>
