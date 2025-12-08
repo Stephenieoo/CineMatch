@@ -611,8 +611,25 @@
     const currentUsername = '{{ request.user.username }}';
 
     function connectChatWebSocket() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const chatWsUrl = `${protocol}//${window.location.host}/ws/chat/${groupCode}/`;
+      // CloudFront DOES support WebSockets - use it when available
+      const isCloudFront = window.location.hostname.includes('cloudfront.net');
+      let wsHost;
+      let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      if (isCloudFront) {
+        // Use CloudFront for WebSocket (it supports WebSocket proxying)
+        wsHost = window.location.host;
+        console.log('[WebSocket] Using CloudFront for WebSocket connection');
+      } else {
+        // Direct connection to EB (for local dev or direct EB access)
+        wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+        if (window.location.protocol === 'http:') {
+          wsProtocol = 'ws:';
+        }
+      }
+      
+      const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${groupCode}/`;
+      console.log('[WebSocket] Connecting to:', chatWsUrl, 'from origin:', window.location.origin);
 
       chatSocket = new WebSocket(chatWsUrl);
 

@@ -59,7 +59,7 @@ deploy:
   region: us-east-1
   app: cinematch-app
   env: cinematch-production
-  bucket_name: elasticbeanstalk-us-east-1-464975960156
+  bucket_name: elasticbeanstalk-us-east-1-028210901732
   bucket_path: cinematch-app
   skip_cleanup: true
   on:
@@ -70,6 +70,6 @@ deploy:
 notifications:
   email:
     recipients:
-      - your-team-email@example.com  # Update with actual team email
+      - rrp4822@nyu.edu   # Update with actual team email
     on_success: change
     on_failure: always

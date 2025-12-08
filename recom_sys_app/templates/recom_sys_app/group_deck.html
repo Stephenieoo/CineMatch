@@ -580,10 +580,13 @@
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             background: rgba(25, 25, 25, 0.98);
             border-radius: 0 0 16px 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
         }
 
         .chat-input {
-            width: 100%;
+            flex: 1;
             padding: 10px 14px;
             background: rgba(0, 0, 0, 0.5);
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -600,6 +603,36 @@
 
         .chat-input::placeholder {
             color: #666666;
+        }
+
+        .chat-send-btn {
+            padding: 10px 20px;
+            background: #E50914;
+            border: none;
+            border-radius: 20px;
+            color: white;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chat-send-btn:hover {
+            background: #ff0a16;
+            transform: scale(1.05);
+        }
+
+        .chat-send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .chat-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .chat-badge {
@@ -883,7 +916,7 @@
         </div>
         <div id="chatMessages" class="chat-messages"></div>
         <div class="chat-input-container">
-            <form id="chatForm" onsubmit="sendMessage(event)">
+            <form id="chatForm" onsubmit="sendMessage(event)" style="display: flex; gap: 8px; width: 100%; align-items: center;">
                 <input
                     type="text"
                     id="chatInput"
@@ -892,6 +925,9 @@
                     maxlength="500"
                     autocomplete="off"
                 >
+                <button type="submit" class="chat-send-btn" id="chatSendBtn">
+                    Send
+                </button>
             </form>
         </div>
     </div>
@@ -1203,10 +1239,28 @@
         // ==================== WebSocket Functions ====================
 
         function connectWebSockets() {
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // CloudFront DOES support WebSockets - use it when available
+            // This avoids SSL certificate issues on EB
+            const isCloudFront = window.location.hostname.includes('cloudfront.net');
+            let wsHost;
+            let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            
+            if (isCloudFront) {
+                // Use CloudFront for WebSocket (it supports WebSocket proxying)
+                wsHost = window.location.host;
+                console.log('[WebSocket] Using CloudFront for WebSocket connection');
+            } else {
+                // Direct connection to EB (for local dev or direct EB access)
+                wsHost = '{{ WEBSOCKET_HOST }}' || window.location.host;
+                // Use ws:// for direct EB if page is HTTP
+                if (window.location.protocol === 'http:') {
+                    wsProtocol = 'ws:';
+                }
+            }
 
             // Connect to chat WebSocket
-            const chatWsUrl = `${wsProtocol}//${window.location.host}/ws/chat/${GROUP_CODE}/`;
+            const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${GROUP_CODE}/`;
+            console.log('[WebSocket] Connecting to:', chatWsUrl, 'from origin:', window.location.origin);
             chatSocket = new WebSocket(chatWsUrl);
 
             chatSocket.onopen = function(e) {
@@ -1229,17 +1283,30 @@
             };
 
             chatSocket.onclose = function(e) {
-                console.log('[Chat] WebSocket closed:', e.code);
-                // setTimeout(connectWebSockets, 3000);
+                console.log('[Chat] WebSocket closed:', e.code, e.reason);
+                if (e.code !== 1000) {  // Not a normal closure
+                    // Show error message to user
+                    let errorMsg = 'Chat connection lost. ';
+                    if (e.code === 1006 && wsProtocol === 'wss:') {
+                        errorMsg += 'The server may not have SSL configured. Please configure SSL on Elastic Beanstalk to enable WebSocket connections.';
+                    }
+                    alert(errorMsg);
+                }
             };
 
             chatSocket.onerror = function(e) {
                 console.error('[Chat] WebSocket error:', e);
+                let errorMsg = 'Chat connection error. ';
+                if (wsProtocol === 'wss:') {
+                    errorMsg += 'If this persists, SSL may need to be configured on the server.';
+                }
+                alert(errorMsg);
             };
 
             // Connect to match WebSocket (only for private groups, not communities)
             if (!IS_COMMUNITY) {
-                const matchWsUrl = `${wsProtocol}//${window.location.host}/ws/match/${GROUP_CODE}/`;
+                const matchWsUrl = `${wsProtocol}//${wsHost}/ws/match/${GROUP_CODE}/`;
+                console.log('[WebSocket] Connecting match to:', matchWsUrl);
                 matchSocket = new WebSocket(matchWsUrl);
 
                 matchSocket.onopen = function(e) {
@@ -1316,6 +1383,14 @@
                     'message': message
                 }));
                 chatInput.value = '';
+                // Re-enable send button
+                const sendBtn = document.getElementById('chatSendBtn');
+                if (sendBtn) sendBtn.disabled = false;
+            } else if (!message) {
+                // Empty message
+                return;
+            } else if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+                alert('Chat connection lost. Please refresh the page.');
             }
         }
 

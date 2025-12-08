@@ -698,10 +698,56 @@ def edit_profile_view(request):
 
     if request.method == "POST":
         form = UserProfileForm(request.POST, request.FILES, instance=profile)
+
+        # Debug logging
+        print(f"[Profile Edit] POST data keys: {list(request.POST.keys())}")
+        print(f"[Profile Edit] FILES keys: {list(request.FILES.keys())}")
+        print(
+            f"[Profile Edit] Has profile_image in FILES: {'profile_image' in request.FILES}"
+        )
+        if "profile_image" in request.FILES:
+            print(f"[Profile Edit] File name: {request.FILES['profile_image'].name}")
+            print(f"[Profile Edit] File size: {request.FILES['profile_image'].size}")
+
         if form.is_valid():
             form.instance.user = request.user
-            form.save()
-            return redirect("recom_sys:profile")
+
+            # Handle profile image removal
+            if request.POST.get("profile_image-clear") == "on":
+                # Delete the old image file if it exists
+                if profile.profile_image:
+                    try:
+                        profile.profile_image.delete(save=False)
+                    except Exception as e:
+                        print(f"[Profile Edit] Error deleting old image: {e}")
+                form.instance.profile_image = None
+            # Handle new image upload - ensure it's saved
+            elif "profile_image" in request.FILES:
+                # The file is in request.FILES, form should handle it
+                # But ensure it's properly assigned
+                uploaded_file = request.FILES["profile_image"]
+                form.instance.profile_image = uploaded_file
+                print(f"[Profile Edit] Assigning uploaded file: {uploaded_file.name}")
+
+            try:
+                profile = form.save()
+                print(f"[Profile Edit] Profile saved. Image: {profile.profile_image}")
+                return redirect("recom_sys:profile")
+            except Exception as e:
+                print(f"[Profile Edit] Error saving profile: {e}")
+                import traceback
+
+                traceback.print_exc()
+                # Re-render form with error
+                return render(
+                    request,
+                    "recom_sys_app/edit_profile.html",
+                    {"form": form, "error": f"Error saving profile: {str(e)}"},
+                )
+        else:
+            # Log form errors for debugging
+            print(f"[Profile Edit] Form errors: {form.errors}")
+            print(f"[Profile Edit] Form non_field_errors: {form.non_field_errors()}")
     else:
         form = UserProfileForm(instance=profile)
 
