@@ -726,9 +726,15 @@
         }
       }
       
-      const wsProtocol = (window.location.protocol === 'https:' || '{{ USE_HTTPS }}' === 'True') ? 'wss:' : 'ws:';
+      // Use ws:// for EB (load balancer doesn't have SSL configured)
+      let wsProtocol = 'ws:';
+      if (wsHost === window.location.host && window.location.protocol === 'https:') {
+        wsProtocol = 'wss:';
+      }
+      // For direct EB connections, use ws:// (EB load balancer doesn't have SSL)
+      
       const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${groupCode}/`;
-      console.log('[WebSocket] Connecting to:', chatWsUrl);
+      console.log('[WebSocket] Connecting to:', chatWsUrl, 'from origin:', window.location.origin);
 
       chatSocket = new WebSocket(chatWsUrl);
 

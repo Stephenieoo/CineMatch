@@ -463,7 +463,11 @@
       <div class="form-group" style="text-align: center;">
         <div class="profile-image-preview" id="profileImagePreview">
           {% if form.instance.profile_image %}
-            <img src="{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
+            {% if MEDIA_HOST %}
+              <img src="{% if USE_HTTPS %}https{% else %}http{% endif %}://{{ MEDIA_HOST }}{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
+            {% else %}
+              <img src="{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
+            {% endif %}
             <div class="profile-placeholder" id="profilePlaceholder" style="display: none;">
               <span style="font-size: 3rem;">👤</span>
               <span style="color: #999; font-size: 0.9rem;">Click to upload</span>

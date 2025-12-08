@@ -1219,12 +1219,19 @@
                 }
             }
             
-            // Always use wss: if page is HTTPS or USE_HTTPS is True
-            const wsProtocol = (window.location.protocol === 'https:' || '{{ USE_HTTPS }}' === 'True') ? 'wss:' : 'ws:';
+            // Use ws:// for EB (load balancer doesn't have SSL configured)
+            // Only use wss:// if explicitly configured or connecting to same host with HTTPS
+            let wsProtocol = 'ws:';
+            if (wsHost === window.location.host && window.location.protocol === 'https:') {
+                wsProtocol = 'wss:';
+            } else if ('{{ USE_HTTPS }}' === 'True' && wsHost.includes('cloudfront.net')) {
+                wsProtocol = 'wss:';
+            }
+            // For direct EB connections, use ws:// (EB load balancer doesn't have SSL)
             
             // Connect to chat WebSocket
             const chatWsUrl = `${wsProtocol}//${wsHost}/ws/chat/${GROUP_CODE}/`;
-            console.log('[WebSocket] Connecting to:', chatWsUrl);
+            console.log('[WebSocket] Connecting to:', chatWsUrl, 'from origin:', window.location.origin);
             chatSocket = new WebSocket(chatWsUrl);
 
             chatSocket.onopen = function(e) {

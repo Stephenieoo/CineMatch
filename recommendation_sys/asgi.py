@@ -25,11 +25,15 @@ from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E40
 from recom_sys_app import routing  # noqa: E402
 
 # ASGI application, handling HTTP and WebSocket
+# For WebSocket: Use AllowedHostsOriginValidator but allow connections from CloudFront
+# when connecting to EB domain (for CloudFront -> EB WebSocket connections)
 application = ProtocolTypeRouter(
     {
         # Django's ASGI application handles traditional HTTP requests.
         "http": django_asgi_app,
         # WebSocket Chat Handler with Authentication and Source Verification
+        # Note: AllowedHostsOriginValidator checks Origin header against ALLOWED_HOSTS
+        # When connecting from CloudFront to EB, Origin is CloudFront domain
         "websocket": AllowedHostsOriginValidator(
             AuthMiddlewareStack(URLRouter(routing.websocket_urlpatterns))
         ),
