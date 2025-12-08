@@ -463,7 +463,11 @@
       <div class="form-group" style="text-align: center;">
         <div class="profile-image-preview" id="profileImagePreview">
           {% if form.instance.profile_image %}
-            <img src="{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg">
+            <img src="{{ form.instance.profile_image.url }}" alt="Profile" id="previewImg" onerror="this.style.display='none'; document.getElementById('profilePlaceholder').style.display='flex';">
+            <div class="profile-placeholder" id="profilePlaceholder" style="display: none;">
+              <span style="font-size: 3rem;">👤</span>
+              <span style="color: #999; font-size: 0.9rem;">Click to upload</span>
+            </div>
           {% else %}
             <div class="profile-placeholder" id="profilePlaceholder">
               <span style="font-size: 3rem;">👤</span>
@@ -471,12 +475,12 @@
             </div>
           {% endif %}
         </div>
-        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
-          <label for="{{ form.profile_image.id_for_label }}" class="upload-label">
+        <div style="display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 15px;">
+          <label for="{{ form.profile_image.id_for_label }}" class="upload-label" style="margin: 0;">
             📸 Choose Image
           </label>
           {% if form.instance.profile_image %}
-          <button type="button" class="btn-remove-image" id="removeImageBtn">
+          <button type="button" class="btn-remove-image" id="removeImageBtn" style="margin: 0;">
             🗑️ Remove Image
           </button>
           {% endif %}
@@ -622,14 +626,43 @@
               if (!img) {
                 img = document.createElement('img');
                 img.id = 'previewImg';
+                img.alt = 'Profile Preview';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
                 preview.appendChild(img);
               }
               
               img.src = event.target.result;
-              img.alt = 'Profile Preview';
+              img.style.display = 'block';
               
               // Show remove button if hidden
-              if (removeBtn) removeBtn.style.display = 'inline-flex';
+              if (removeBtn) {
+                removeBtn.style.display = 'inline-flex';
+              } else {
+                // Create remove button if it doesn't exist
+                const btnContainer = preview.parentElement.querySelector('div[style*="display: flex"]');
+                if (btnContainer && !document.getElementById('removeImageBtn')) {
+                  const newRemoveBtn = document.createElement('button');
+                  newRemoveBtn.type = 'button';
+                  newRemoveBtn.className = 'btn-remove-image';
+                  newRemoveBtn.id = 'removeImageBtn';
+                  newRemoveBtn.textContent = '🗑️ Remove Image';
+                  newRemoveBtn.style.margin = '0';
+                  newRemoveBtn.addEventListener('click', function() {
+                    if (confirm('Are you sure you want to remove your profile picture?')) {
+                      if (clearInput) clearInput.value = 'on';
+                      if (imageInput) imageInput.value = '';
+                      if (img) img.remove();
+                      if (placeholderEl) {
+                        placeholderEl.style.display = 'flex';
+                      }
+                      newRemoveBtn.remove();
+                    }
+                  });
+                  btnContainer.appendChild(newRemoveBtn);
+                }
+              }
             };
             reader.readAsDataURL(file);
           }
