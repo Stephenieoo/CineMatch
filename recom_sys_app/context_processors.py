@@ -21,8 +21,6 @@ def websocket_settings(request):
 
     # For media files: Use S3 if configured, otherwise CloudFront/EB
     # S3 is the best solution - it provides HTTPS and scalability
-    from django.conf import settings
-
     aws_bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "")
     aws_custom_domain = getattr(settings, "AWS_S3_CUSTOM_DOMAIN", "")
 
