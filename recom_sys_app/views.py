@@ -700,6 +700,14 @@ def edit_profile_view(request):
         form = UserProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
             form.instance.user = request.user
+
+            # Handle profile image removal
+            if request.POST.get("profile_image-clear") == "on":
+                # Delete the old image file if it exists
+                if profile.profile_image:
+                    profile.profile_image.delete(save=False)
+                form.instance.profile_image = None
+
             form.save()
             return redirect("recom_sys:profile")
     else:

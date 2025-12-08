@@ -42,10 +42,12 @@ urlpatterns = [
     ),  # App routes - handles all app URLs including home
 ]
 
+# Serve media files (user uploads like profile images)
+# In production, consider using S3 for better scalability
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
 if settings.DEBUG:
     urlpatterns += static(
         settings.STATIC_URL,
         document_root=os.path.join(settings.BASE_DIR, "recom_sys_app", "static"),
     )
-    # Serve media files in development
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
