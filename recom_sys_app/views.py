@@ -539,17 +539,15 @@ def _build_recommendation_agent(user, groq_api_key: str):
     if watched_liked_text:
         instructions.append(watched_liked_text)
 
-    instructions.extend(
-        [
-            "Recommend exactly 3 movies with a one-line reason for each.",
-            "Search for movies released after 2020 unless it belongs to one of the classic titles",
-            "Avoid recommending movies the user has already disliked or watched.",
-            "For each movie provide a score of match out of 100% based on reviews and comparison with the user's movies affinity.",
-            "Format each as: Title — Reason (Match: NN%).",
-            "Use markdown to format your answers.",
-            'Return the three movies at the end as a JSON array of strings like: ["Movie 1", "Movie 2", "Movie 3"]',
-        ]
-    )
+    instructions.extend([
+        "Recommend exactly 3 movies with a one-line reason for each.",
+        "Search for movies released after 2020 unless it belongs to one of the classic titles",
+        "Avoid recommending movies the user has already disliked or watched.",
+        "For each movie provide a score of match out of 100% based on reviews and comparison with the user's movies affinity.",
+        "Format each as: Title — Reason (Match: NN%).",
+        "Use markdown to format your answers.",
+        'Return the three movies at the end as a JSON array of strings like: ["Movie 1", "Movie 2", "Movie 3"]',
+    ])
 
     agent = Agent(
         name="Recommendation Agent",
