@@ -402,6 +402,28 @@ def _get_user_interactions(user, status=None):
         return []
 
 
+def _get_movie_titles_from_ids(tmdb_ids: list[int], limit: int = 20) -> list[str]:
+    """
+    Fetch movie titles from TMDB IDs.
+    Returns a list of movie titles.
+    """
+    if not tmdb_ids:
+        return []
+
+    titles = []
+    for tmdb_id in tmdb_ids[:limit]:  # Limit to avoid too many API calls
+        try:
+            det = _tmdb_details(tmdb_id)
+            title = det.get("title", "")
+            if title:
+                titles.append(title)
+        except Exception as e:
+            print(f"Error fetching title for movie {tmdb_id}: {e}")
+            continue
+
+    return titles
+
+
 # ============================================
 # AI Agent Helper Functions
 # ============================================
@@ -454,9 +476,21 @@ def _build_recommendation_agent(user, groq_api_key: str):
     """
     Build and configure the recommendation agent with user preferences.
     """
+    # Get signup movies and genres
     movies = _get_signup_movies(user)
     genres = _get_signup_genre(user)
-    liked_movies = _get_user_interactions(user, status="LIKE")
+
+    # Get interaction IDs for different statuses
+    liked_ids = _get_user_interactions(user, status="LIKE")
+    disliked_ids = _get_user_interactions(user, status="DISLIKE")
+    watch_later_ids = _get_user_interactions(user, status="WATCH_LATER")
+    watched_liked_ids = _get_user_interactions(user, status="WATCHED_LIKED")
+
+    # Fetch actual movie titles from IDs (limit to 10 each to avoid too many API calls)
+    liked_titles = _get_movie_titles_from_ids(liked_ids, limit=10)
+    disliked_titles = _get_movie_titles_from_ids(disliked_ids, limit=10)
+    watch_later_titles = _get_movie_titles_from_ids(watch_later_ids, limit=10)
+    watched_liked_titles = _get_movie_titles_from_ids(watched_liked_ids, limit=10)
 
     # Build context about user preferences
     affinity_text = (
@@ -465,22 +499,57 @@ def _build_recommendation_agent(user, groq_api_key: str):
         else "The user has not provided a movie affinity list."
     )
     genre_text = f"The user prefers {' and '.join(genres)} genres." if genres else ""
+
+    # Build text descriptions with actual movie titles
     liked_text = (
-        f"The user has liked {len(liked_movies)} movies." if liked_movies else ""
+        f"Movies the user has liked (wants to watch): {', '.join(liked_titles)}"
+        if liked_titles
+        else ""
+    )
+    disliked_text = (
+        f"Movies the user has disliked (not interested): {', '.join(disliked_titles)}"
+        if disliked_titles
+        else ""
+    )
+    watch_later_text = (
+        f"Movies in user's watch later list: {', '.join(watch_later_titles)}"
+        if watch_later_titles
+        else ""
+    )
+    watched_liked_text = (
+        f"Movies the user has watched and enjoyed: {', '.join(watched_liked_titles)}"
+        if watched_liked_titles
+        else ""
     )
 
+    # Build instructions list, only including non-empty context
     instructions = [
         "You are a movie recommendation agent.",
         affinity_text,
-        genre_text,
-        liked_text,
-        "Recommend exactly 3 movies with a one-line reason for each.",
-        "Search for movies released after 2020.",
-        "For each movie provide a score of match out of 100% based on reviews and comparison with the user's movies affinity.",
-        "Format each as: Title — Reason (Match: NN%).",
-        "Use markdown to format your answers.",
-        'Return the three movies at the end as a JSON array of strings like: ["Movie 1", "Movie 2", "Movie 3"]',
     ]
+
+    if genre_text:
+        instructions.append(genre_text)
+    if liked_text:
+        instructions.append(liked_text)
+    if disliked_text:
+        instructions.append(disliked_text)
+    if watch_later_text:
+        instructions.append(watch_later_text)
+    if watched_liked_text:
+        instructions.append(watched_liked_text)
+
+    instructions.extend(
+        [
+            "Recommend exactly 3 movies with a one-line reason for each.",
+            "Search for movies released after 2020 unless it belongs to one of the classic titles",
+            "Avoid recommending movies the user has already disliked or watched.",
+            "For each movie provide a score of match out of 100% based on reviews and comparison with the user's movies affinity.",
+            "Format each as: Title — Reason (Match: NN%).",
+            "Use markdown to format your answers.",
+            'Return the three movies at the end as a JSON array of strings like: ["Movie 1", "Movie 2", "Movie 3"]',
+        ]
+    )
 
     agent = Agent(
         name="Recommendation Agent",
