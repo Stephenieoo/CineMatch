@@ -27,61 +27,61 @@ class RecommendationService:
     def get_group_deck(cls, group_session, user=None, limit=50):
         """
         为群组生成个性化电影推荐列表
-        
+
         Args:
             group_session: GroupSession 实例
             user: User 实例（可选，用于过滤该用户已滑过的电影）
             limit: 返回电影数量
-            
+
         Returns:
             list: 电影 tmdb_id 列表
         """
         # 检查缓存（如果提供了user，缓存key包含user_id）
         if user:
-            cache_key = f'group_deck_{group_session.id}_user_{user.id}'
+            cache_key = f"group_deck_{group_session.id}_user_{user.id}"
         else:
-            cache_key = f'group_deck_{group_session.id}'
-        
+            cache_key = f"group_deck_{group_session.id}"
+
         cached_deck = cache.get(cache_key)
         if cached_deck:
             return cached_deck[:limit]
-        
+
         # 获取活跃成员
         members = GroupMember.objects.filter(
-            group_session=group_session,
-            is_active=True
-        ).select_related('user')
-        
+            group_session=group_session, is_active=True
+        ).select_related("user")
+
         if members.count() < 2:
             # 人数不足，返回热门电影
             movie_ids = cls._get_popular_movies(limit)
         else:
             # 基于群组历史 likes 生成推荐（传递 group_session）
-            movie_ids = cls._generate_group_recommendations(group_session, members, limit * 2)
-        
+            movie_ids = cls._generate_group_recommendations(
+                group_session, members, limit * 2
+            )
+
         # 过滤已经滑过的电影（只过滤当前用户滑过的）
         if user:
             # 用户级别过滤：只排除该用户滑过的电影
             swiped_ids = set(
                 GroupSwipe.objects.filter(
-                    group_session=group_session,
-                    user=user  # ✅ 只过滤当前用户的swipes
-                ).values_list('tmdb_id', flat=True)
+                    group_session=group_session, user=user  # ✅ 只过滤当前用户的swipes
+                ).values_list("tmdb_id", flat=True)
             )
         else:
             # 群组级别过滤：排除所有人滑过的电影（向后兼容）
             swiped_ids = set(
-                GroupSwipe.objects.filter(
-                    group_session=group_session
-                ).values_list('tmdb_id', flat=True)
+                GroupSwipe.objects.filter(group_session=group_session).values_list(
+                    "tmdb_id", flat=True
+                )
             )
-        
+
         # 移除已滑过的电影
         filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
-        
+
         # 缓存结果
         cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
-        
+
         return filtered_movies[:limit]
 
     @classmethod
@@ -455,19 +455,20 @@ class RecommendationService:
         现在需要清除所有用户的个性化缓存
         """
         # 清除旧的群组级别缓存（向后兼容）
-        cache_key = f'group_deck_{group_session.id}'
+        cache_key = f"group_deck_{group_session.id}"
         cache.delete(cache_key)
-        
+
         # 清除所有活跃成员的用户级别缓存
         active_members = GroupMember.objects.filter(
-            group_session=group_session,
-            is_active=True
-        ).select_related('user')
-        
+            group_session=group_session, is_active=True
+        ).select_related("user")
+
         for member in active_members:
-            user_cache_key = f'group_deck_{group_session.id}_user_{member.user.id}'
+            user_cache_key = f"group_deck_{group_session.id}_user_{member.user.id}"
             cache.delete(user_cache_key)
-            print(f"[DEBUG] Cleared cache for user {member.user.username}: {user_cache_key}")
+            print(
+                f"[DEBUG] Cleared cache for user {member.user.username}: {user_cache_key}"
+            )
 
     @classmethod
     def search_movies(cls, query, limit=10):
@@ -808,10 +809,10 @@ class RecommendationService:
         deleted_count, _ = GroupSwipe.objects.filter(
             group_session=group_session
         ).delete()
-        
+
         print(f"[DEBUG clear_group_swipes] Deleted {deleted_count} swipe records")
-        
+
         # clear recommendation cache
         cls.invalidate_deck_cache(group_session)
-        
+
         return deleted_count
