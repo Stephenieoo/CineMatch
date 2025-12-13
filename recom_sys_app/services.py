@@ -24,103 +24,64 @@ class RecommendationService:
     CACHE_TIMEOUT = 3600  # 1小时缓存
 
     @classmethod
-    def get_group_deck(cls, group_session, limit=50):
+    def get_group_deck(cls, group_session, user=None, limit=50):
         """
         为群组生成个性化电影推荐列表
-
-        For COMMUNITY groups: filter movies by community genre
-        For PRIVATE groups: generate recommendations based on group member history
-
+        
         Args:
             group_session: GroupSession 实例
+            user: User 实例（可选，用于过滤该用户已滑过的电影）
             limit: 返回电影数量
-
+            
         Returns:
             list: 电影 tmdb_id 列表
         """
-        # 检查缓存
-        cache_key = f"group_deck_{group_session.id}"
+        # 检查缓存（如果提供了user，缓存key包含user_id）
+        if user:
+            cache_key = f'group_deck_{group_session.id}_user_{user.id}'
+        else:
+            cache_key = f'group_deck_{group_session.id}'
+        
         cached_deck = cache.get(cache_key)
         if cached_deck:
             return cached_deck[:limit]
-
-        # For COMMUNITY groups, filter by genre only
-        if group_session.kind == "COMMUNITY":
-            # Get genre from community_key or genre_filter
-            genre_name = group_session.genre_filter or ""
-            if not genre_name and group_session.community_key:
-                # Extract from community_key (format: "genre:Action")
-                if group_session.community_key.startswith("genre:"):
-                    genre_name = group_session.community_key.split(":", 1)[1]
-
-            print(f"[DEBUG get_group_deck] COMMUNITY mode - genre_name: {genre_name}")
-            print(
-                f"[DEBUG get_group_deck] community_key: {group_session.community_key}, genre_filter: {group_session.genre_filter}"
-            )
-
-            if genre_name:
-                # Get genre IDs and fetch movies
-                genre_ids = cls._get_genre_ids_by_names([genre_name])
-                print(f"[DEBUG get_group_deck] genre_ids: {genre_ids}")
-                if genre_ids:
-                    movie_ids = cls._get_movies_by_genres(genre_ids, limit * 2)
-                    print(
-                        f"[DEBUG get_group_deck] Fetched {len(movie_ids)} movies for genre {genre_name}"
-                    )
-                else:
-                    movie_ids = cls._get_popular_movies(limit * 2)
-                    print(
-                        "[DEBUG get_group_deck] No genre IDs found, using popular movies"
-                    )
-            else:
-                movie_ids = cls._get_popular_movies(limit * 2)
-                print(
-                    "[DEBUG get_group_deck] No genre name found, using popular movies"
-                )
-
-            # For communities, filter out movies user already swiped via Interaction model
-            from .models import Interaction
-
-            # Get all users in community
-            user_ids = GroupMember.objects.filter(
-                group_session=group_session, is_active=True
-            ).values_list("user_id", flat=True)
-
-            # Get all swiped movie IDs by community members
+        
+        # 获取活跃成员
+        members = GroupMember.objects.filter(
+            group_session=group_session,
+            is_active=True
+        ).select_related('user')
+        
+        if members.count() < 2:
+            # 人数不足，返回热门电影
+            movie_ids = cls._get_popular_movies(limit)
+        else:
+            # 基于群组历史 likes 生成推荐（传递 group_session）
+            movie_ids = cls._generate_group_recommendations(group_session, members, limit * 2)
+        
+        # 过滤已经滑过的电影（只过滤当前用户滑过的）
+        if user:
+            # 用户级别过滤：只排除该用户滑过的电影
             swiped_ids = set(
-                Interaction.objects.filter(user_id__in=user_ids).values_list(
-                    "tmdb_id", flat=True
-                )
+                GroupSwipe.objects.filter(
+                    group_session=group_session,
+                    user=user  # ✅ 只过滤当前用户的swipes
+                ).values_list('tmdb_id', flat=True)
             )
         else:
-            # For PRIVATE groups, use original logic
-            # 获取活跃成员
-            members = GroupMember.objects.filter(
-                group_session=group_session, is_active=True
-            ).select_related("user")
-
-            if members.count() < 2:
-                # 人数不足，返回热门电影
-                movie_ids = cls._get_popular_movies(limit * 2)
-            else:
-                # 基于群组历史 likes 生成推荐（传递 group_session）
-                movie_ids = cls._generate_group_recommendations(
-                    group_session, members, limit * 2
-                )
-
-            # 过滤已经滑过的电影
+            # 群组级别过滤：排除所有人滑过的电影（向后兼容）
             swiped_ids = set(
-                GroupSwipe.objects.filter(group_session=group_session).values_list(
-                    "tmdb_id", flat=True
-                )
+                GroupSwipe.objects.filter(
+                    group_session=group_session
+                ).values_list('tmdb_id', flat=True)
             )
-
+        
         # 移除已滑过的电影
         filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
-
+        
         # 缓存结果
         cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
-
+        
         return filtered_movies[:limit]
 
     @classmethod
@@ -491,9 +452,22 @@ class RecommendationService:
     def invalidate_deck_cache(cls, group_session):
         """
         清除群组推荐缓存（当有新的 swipe 或成员变化时调用）
+        现在需要清除所有用户的个性化缓存
         """
-        cache_key = f"group_deck_{group_session.id}"
+        # 清除旧的群组级别缓存（向后兼容）
+        cache_key = f'group_deck_{group_session.id}'
         cache.delete(cache_key)
+        
+        # 清除所有活跃成员的用户级别缓存
+        active_members = GroupMember.objects.filter(
+            group_session=group_session,
+            is_active=True
+        ).select_related('user')
+        
+        for member in active_members:
+            user_cache_key = f'group_deck_{group_session.id}_user_{member.user.id}'
+            cache.delete(user_cache_key)
+            print(f"[DEBUG] Cleared cache for user {member.user.username}: {user_cache_key}")
 
     @classmethod
     def search_movies(cls, query, limit=10):
@@ -670,11 +644,11 @@ class RecommendationService:
                 "all_finished": False,
                 "total_members": 0,
                 "finished_members": 0,
-                "total_movies": 5,
+                "total_movies": 20,
             }
 
         # 固定每轮 20 部电影
-        MOVIES_PER_ROUND = 5
+        MOVIES_PER_ROUND = 20
         total_movies = MOVIES_PER_ROUND
 
         print(f"[DEBUG check_finished] Movies per round: {total_movies}")
@@ -830,7 +804,14 @@ class RecommendationService:
             f"[DEBUG clear_swipes] Cleared {deleted_count} swipe records for group {group_session.group_code}"
         )
 
-        # 清除缓存
+        # delete all swipe record in the group 删除该群组的所有swipe记录
+        deleted_count, _ = GroupSwipe.objects.filter(
+            group_session=group_session
+        ).delete()
+        
+        print(f"[DEBUG clear_group_swipes] Deleted {deleted_count} swipe records")
+        
+        # clear recommendation cache
         cls.invalidate_deck_cache(group_session)
-
+        
         return deleted_count

@@ -323,7 +323,7 @@ def group_room_view(request, group_code):
     Group Room Page (Original)
     URL: /groups/<group_code>/room/
     """
-    return render(request, "recom_sys_app/group_room.html", {"group_code": group_code})
+    return render(request, "recom_sys_app/group_lobby.html", {"group_code": group_code})
 
 
 @login_required

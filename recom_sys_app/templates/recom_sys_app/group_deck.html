@@ -2000,7 +2000,7 @@
                             </div>
 
                             <div class="text-center mt-6">
-                                <button onclick="location.href='/groups/${GROUP_CODE}/room/'"
+                                <button onclick="backToRoomAndClear()"
                                         class="px-6 py-3 rounded-lg inline-block btn-netflix" style="margin-right: 12px;">
                                     💬 Back to Group Room
                                 </button>
@@ -2030,6 +2030,34 @@
                     </div>
                 `;
                 emptyState.classList.remove('hidden');
+            }
+        }
+        
+        async function backToRoomAndClear() {
+            // Automatically clear swipe records before returning to the lobby
+            try {
+                const csrfToken = getCookie('csrftoken');
+                const response = await fetch(`/api/groups/${GROUP_CODE}/clear-swipes/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log('[Back to Room] Cleared swipes, returning to lobby...');
+                    location.href = `/groups/${GROUP_CODE}/room/`;
+                } else {
+                    console.error('[Back to Room] Failed to clear swipes:', data.error);
+                    // Even if clearing fails, return to lobby.
+                    location.href = `/groups/${GROUP_CODE}/room/`;
+                }
+            } catch (error) {
+                console.error('[Back to Room] Error:', error);
+                location.href = `/groups/${GROUP_CODE}/room/`;
             }
         }
 
