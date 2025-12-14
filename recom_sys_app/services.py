@@ -126,7 +126,8 @@ class RecommendationService:
     @classmethod
     def get_solo_deck(cls, user, limit=50):
         """
-        Generate personalized movie recommendations for solo mode
+        Generate personalized movie recommendations for solo mode.
+        Uses UserPreference data if available for better personalization.
 
         Args:
             user: User instance
@@ -141,21 +142,26 @@ class RecommendationService:
         if cached_deck:
             return cached_deck[:limit]
 
-        # Get user's interaction history
-        liked_interactions = Interaction.objects.filter(
-            user=user, status=Interaction.Status.LIKE
-        ).values_list("tmdb_id", flat=True)
+        # Try to use preference-based recommendations first
+        from .models import UserPreference
 
-        has_history = liked_interactions.count() > 0
-
-        if has_history:
-            # Returning user: use swipe history
-            movie_ids = cls._generate_solo_recommendations_from_history(
-                user, list(liked_interactions), limit * 2
+        try:
+            preference = UserPreference.objects.get(user=user)
+            if preference.genre_preferences and preference.total_interactions > 0:
+                # Use preference-based recommendations
+                movie_ids = cls._generate_solo_recommendations_from_preferences(
+                    user, preference, limit * 2
+                )
+            else:
+                # Fallback to history-based
+                movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
+                    user, limit * 2
+                )
+        except UserPreference.DoesNotExist:
+            # No preferences yet, use history/profile
+            movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
+                user, limit * 2
             )
-        else:
-            # New user: use onboarding preferences
-            movie_ids = cls._generate_solo_recommendations_from_profile(user, limit * 2)
 
         # Filter out already-swiped movies
         swiped_ids = set(
@@ -169,6 +175,96 @@ class RecommendationService:
         cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
 
         return filtered_movies[:limit]
+
+    @classmethod
+    def _generate_solo_recommendations_from_preferences(
+        cls, user, preference, limit=100
+    ):
+        """
+        Generate recommendations using UserPreference genre scores.
+
+        Args:
+            user: User instance
+            preference: UserPreference instance
+            limit: Number of movies to fetch
+
+        Returns:
+            list: Movie tmdb_id list
+        """
+        # Get top genres from preferences
+        top_genres = preference.get_top_genres(limit=5)
+        if not top_genres:
+            return cls._generate_solo_recommendations_from_history_or_profile(
+                user, limit
+            )
+
+        # Get genre names and scores
+        genre_names = [genre for genre, _ in top_genres]
+        genre_scores = {genre: score for genre, score in top_genres}
+
+        # Get movies for top genres
+        genre_ids = cls._get_genre_ids_by_names(genre_names)
+        if not genre_ids:
+            return cls._generate_solo_recommendations_from_history_or_profile(
+                user, limit
+            )
+
+        # Fetch movies and score them by genre preference
+        all_movies = []
+        for genre_id in genre_ids:
+            movies = cls._get_movies_by_genres([genre_id], limit // len(genre_ids) + 10)
+            all_movies.extend(movies)
+
+        # Score movies based on genre preferences
+        scored_movies = []
+        for tmdb_id in all_movies:
+            movie_details = cls.get_movie_details(tmdb_id)
+            if not movie_details:
+                continue
+
+            # Calculate weighted score based on genre preferences
+            movie_genres = movie_details.get("genres", [])
+            score = 0.0
+            for genre_name in movie_genres:
+                score += genre_scores.get(genre_name, 0.0)
+
+            # Average score across genres
+            if movie_genres:
+                score = score / len(movie_genres)
+
+            scored_movies.append((tmdb_id, score))
+
+        # Sort by score and return top movies
+        scored_movies.sort(key=lambda x: x[1], reverse=True)
+        return [tmdb_id for tmdb_id, _ in scored_movies[:limit]]
+
+    @classmethod
+    def _generate_solo_recommendations_from_history_or_profile(cls, user, limit=100):
+        """
+        Fallback method: use history or profile-based recommendations.
+
+        Args:
+            user: User instance
+            limit: Number of movies to return
+
+        Returns:
+            list: Movie tmdb_id list
+        """
+        # Get user's interaction history
+        liked_interactions = Interaction.objects.filter(
+            user=user, status=Interaction.Status.LIKE
+        ).values_list("tmdb_id", flat=True)
+
+        has_history = liked_interactions.count() > 0
+
+        if has_history:
+            # Returning user: use swipe history
+            return cls._generate_solo_recommendations_from_history(
+                user, list(liked_interactions), limit
+            )
+        else:
+            # New user: use onboarding preferences
+            return cls._generate_solo_recommendations_from_profile(user, limit)
 
     @classmethod
     def _generate_solo_recommendations_from_history(
@@ -834,3 +930,162 @@ class RecommendationService:
         cls.invalidate_deck_cache(group_session)
 
         return deleted_count
+
+
+class PreferenceService:
+    """
+    Service for calculating and updating user preferences based on interaction history.
+    Automatically learns from user likes/dislikes to improve recommendations.
+    """
+
+    @classmethod
+    def update_user_preferences(cls, user, force_recalculate=False):
+        """
+        Calculate and update user preferences based on interaction history.
+
+        Args:
+            user: User instance
+            force_recalculate: If True, recalculate even if recently updated
+
+        Returns:
+            UserPreference: The updated preference object
+        """
+        from .models import UserPreference, Interaction
+        from django.db import transaction
+        from collections import Counter
+        from django.utils import timezone
+        from datetime import timedelta
+
+        # Get or create preference object
+        preference, created = UserPreference.objects.get_or_create(user=user)
+
+        # Skip if recently updated (unless force_recalculate)
+        if not force_recalculate and not created:
+            recent_threshold = timezone.now() - timedelta(minutes=5)
+            if preference.last_updated > recent_threshold:
+                return preference
+
+        # Get all user interactions
+        interactions = Interaction.objects.filter(user=user).select_related()
+
+        # Calculate statistics
+        total_interactions = interactions.count()
+        total_likes = interactions.filter(
+            status__in=[
+                Interaction.Status.LIKE,
+                Interaction.Status.WATCHED_LIKED,
+            ]
+        ).count()
+        total_dislikes = interactions.filter(
+            status__in=[
+                Interaction.Status.DISLIKE,
+                Interaction.Status.WATCHED_DISLIKED,
+            ]
+        ).count()
+
+        # Calculate average rating
+        ratings = interactions.exclude(rating__isnull=True).values_list("rating", flat=True)
+        average_rating = sum(ratings) / len(ratings) if ratings else None
+
+        # Calculate genre preferences
+        genre_weights = {}
+        liked_movies = interactions.filter(
+            status__in=[Interaction.Status.LIKE, Interaction.Status.WATCHED_LIKED]
+        ).values_list("tmdb_id", flat=True)
+        disliked_movies = interactions.filter(
+            status__in=[Interaction.Status.DISLIKE, Interaction.Status.WATCHED_DISLIKED]
+        ).values_list("tmdb_id", flat=True)
+
+        # Process liked movies: +2 weight per genre
+        for tmdb_id in liked_movies[:50]:  # Limit to avoid too many API calls
+            movie_details = RecommendationService.get_movie_details(tmdb_id)
+            if movie_details and movie_details.get("genres"):
+                for genre_name in movie_details["genres"]:
+                    genre_weights[genre_name] = genre_weights.get(genre_name, 0) + 2
+
+        # Process disliked movies: -1 weight per genre
+        for tmdb_id in disliked_movies[:20]:  # Limit to avoid too many API calls
+            movie_details = RecommendationService.get_movie_details(tmdb_id)
+            if movie_details and movie_details.get("genres"):
+                for genre_name in movie_details["genres"]:
+                    genre_weights[genre_name] = genre_weights.get(genre_name, 0) - 1
+
+        # Normalize genre scores to 0.0-1.0 range
+        genre_preferences = {}
+        if genre_weights:
+            min_weight = min(genre_weights.values())
+            max_weight = max(genre_weights.values())
+            weight_range = max_weight - min_weight if max_weight != min_weight else 1
+
+            for genre, weight in genre_weights.items():
+                # Normalize: (weight - min) / range
+                normalized = (weight - min_weight) / weight_range if weight_range > 0 else 0.5
+                # Ensure it's between 0.0 and 1.0
+                genre_preferences[genre] = max(0.0, min(1.0, normalized))
+
+        # Extract preferred actors/directors from liked movies
+        # Note: This requires additional API calls to get credits
+        # For now, we'll skip this to avoid too many API calls
+        # Can be enhanced later with a separate endpoint or background job
+        preferred_actors = []
+        preferred_directors = []
+        
+        # Optional: Fetch credits for top liked movies (can be expensive)
+        # Uncomment if you want to track actors/directors
+        # for tmdb_id in liked_movies[:10]:  # Limit to avoid API rate limits
+        #     try:
+        #         credits_url = f"{RecommendationService.TMDB_BASE_URL}/movie/{tmdb_id}/credits"
+        #         response = requests.get(
+        #             credits_url,
+        #             headers=RecommendationService.TMDB_HEADERS,
+        #             timeout=10,
+        #         )
+        #         if response.status_code == 200:
+        #             credits = response.json()
+        #             # Extract top 3 cast members
+        #             cast = credits.get("cast", [])[:3]
+        #             for actor in cast:
+        #                 actor_id = actor.get("id")
+        #                 if actor_id and actor_id not in preferred_actors:
+        #                     preferred_actors.append(actor_id)
+        #             # Extract directors
+        #             crew = credits.get("crew", [])
+        #             for person in crew:
+        #                 if person.get("job") == "Director":
+        #                     director_id = person.get("id")
+        #                     if director_id and director_id not in preferred_directors:
+        #                         preferred_directors.append(director_id)
+        #     except Exception:
+        #         pass  # Skip if API call fails
+
+        # Update preference object
+        with transaction.atomic():
+            preference.genre_preferences = genre_preferences
+            preference.preferred_actors = preferred_actors[:20]  # Limit to top 20
+            preference.preferred_directors = preferred_directors[:10]  # Limit to top 10
+            preference.average_rating_given = average_rating
+            preference.total_interactions = total_interactions
+            preference.total_likes = total_likes
+            preference.total_dislikes = total_dislikes
+            preference.save()
+
+        return preference
+
+    @classmethod
+    def get_user_genre_scores(cls, user):
+        """
+        Get genre preference scores for a user.
+
+        Args:
+            user: User instance
+
+        Returns:
+            dict: Genre name -> score (0.0-1.0)
+        """
+        from .models import UserPreference
+
+        try:
+            preference = UserPreference.objects.get(user=user)
+            return preference.genre_preferences or {}
+        except UserPreference.DoesNotExist:
+            return {}
