@@ -7,7 +7,14 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.db import transaction
 from .models import Interaction
-from .services import PreferenceService, CollaborativeFilteringService
+
+# Import services lazily to avoid circular imports during app startup
+try:
+    from .services import PreferenceService, CollaborativeFilteringService
+except ImportError:
+    # During migrations or if services aren't available yet
+    PreferenceService = None
+    CollaborativeFilteringService = None
 
 
 @receiver(post_save, sender=Interaction)
@@ -17,6 +24,9 @@ def update_preferences_on_interaction_save(sender, instance, created, **kwargs):
     Also invalidate collaborative filtering cache.
     Uses transaction.on_commit to avoid blocking the request.
     """
+    if PreferenceService is None or CollaborativeFilteringService is None:
+        return  # Services not available yet (e.g., during migrations)
+    
     if created or kwargs.get("update_fields"):
         # Schedule preference update after transaction commits
         transaction.on_commit(
@@ -34,6 +44,9 @@ def update_preferences_on_interaction_delete(sender, instance, **kwargs):
     Update user preferences when an interaction is deleted.
     Also invalidate collaborative filtering cache.
     """
+    if PreferenceService is None or CollaborativeFilteringService is None:
+        return  # Services not available yet (e.g., during migrations)
+    
     transaction.on_commit(
         lambda: PreferenceService.update_user_preferences(instance.user)
     )
