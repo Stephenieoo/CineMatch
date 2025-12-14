@@ -355,13 +355,15 @@ if DEBUG:
         },
     }
 else:
-    # In production, use WhiteNoise with compression and manifest
+    # In production, use WhiteNoise with compression
+    # Using CompressedStaticFilesStorage instead of CompressedManifestStaticFilesStorage
+    # to avoid manifest errors if files are missing from manifest
     STORAGES = {
         "default": {
             "BACKEND": DEFAULT_FILE_STORAGE,
         },
         "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
         },
     }
 
