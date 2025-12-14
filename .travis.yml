@@ -68,6 +68,19 @@ deploy:
     branch: develop
     python: "3.12"
 
+# Invalidate CloudFront cache after successful deployment
+after_deploy:
+  - |
+    if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+      echo "Invalidating CloudFront distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+      aws cloudfront create-invalidation \
+        --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+        --paths "/*" \
+        --region us-east-1 || echo "CloudFront invalidation failed, but deployment succeeded"
+    else
+      echo "CLOUDFRONT_DISTRIBUTION_ID not set, skipping CloudFront invalidation"
+    fi
+
 # Notifications
 notifications:
   email:
