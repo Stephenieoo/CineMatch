@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, render, redirect
 from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from channels.layers import get_channel_layer
@@ -323,7 +323,7 @@ def group_room_view(request, group_code):
     Group Room Page (Original)
     URL: /groups/<group_code>/room/
     """
-    return render(request, "recom_sys_app/group_room.html", {"group_code": group_code})
+    return render(request, "recom_sys_app/group_lobby.html", {"group_code": group_code})
 
 
 @login_required
