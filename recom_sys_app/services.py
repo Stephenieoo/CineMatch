@@ -299,22 +299,37 @@ class RecommendationService:
     def _get_movies_by_genres(cls, genre_ids, limit=100):
         """
         从 TMDB 获取指定类型的高评分电影
+        添加随机性，避免每次返回相同电影
         """
         try:
+            import random
+
             # 构建类型筛选参数
             genre_str = "|".join(map(str, genre_ids))
 
+            # 随机选择排序方式，增加多样性
+            sort_options = [
+                "vote_average.desc",  # 评分最高
+                "popularity.desc",  # 最受欢迎
+                "release_date.desc",  # 最新上映
+                "vote_count.desc",  # 评论最多
+            ]
+            random_sort = random.choice(sort_options)
+
+            # 随机选择1-3页
+            random_page = random.randint(1, 3)
+
             params = {
                 "with_genres": genre_str,
-                "sort_by": "vote_average.desc",
+                "sort_by": random_sort,
                 "vote_count.gte": 100,  # 至少100个投票
-                "page": 1,
+                "page": random_page,
             }
 
             response = requests.get(
                 f"{cls.TMDB_BASE_URL}/discover/movie",
+                headers=cls.TMDB_HEADERS,  # ✅ 使用 Bearer Token
                 params=params,
-                headers=cls.TMDB_HEADERS,
                 timeout=10,
             )
             response.raise_for_status()
@@ -322,18 +337,25 @@ class RecommendationService:
             data = response.json()
             movie_ids = [movie["id"] for movie in data.get("results", [])]
 
-            # 如果第一页不够，获取第二页
-            if len(movie_ids) < limit and data.get("total_pages", 0) > 1:
-                params["page"] = 2
+            # 如果第一页不够，获取下一页
+            if len(movie_ids) < limit and data.get("total_pages", 0) > random_page:
+                params["page"] = random_page + 1
                 response = requests.get(
                     f"{cls.TMDB_BASE_URL}/discover/movie",
-                    params=params,
                     headers=cls.TMDB_HEADERS,
+                    params=params,
                     timeout=10,
                 )
                 response.raise_for_status()
                 data = response.json()
                 movie_ids.extend([movie["id"] for movie in data.get("results", [])])
+
+            # 打乱顺序
+            random.shuffle(movie_ids)
+
+            print(
+                f"[DEBUG _get_movies_by_genres] Got {len(movie_ids)} movies (sort: {random_sort}, page: {random_page})"
+            )
 
             return movie_ids[:limit]
 
@@ -345,20 +367,43 @@ class RecommendationService:
     def _get_popular_movies(cls, limit=50):
         """
         获取热门电影作为后备方案
+        添加随机页码，避免每次返回相同电影
         """
         try:
-            params = {"page": 1}
+            import random
+
+            # 随机选择1-5页之间的热门电影，增加多样性
+            random_page = random.randint(1, 5)
 
             response = requests.get(
                 f"{cls.TMDB_BASE_URL}/movie/popular",
-                params=params,
-                headers=cls.TMDB_HEADERS,
+                headers=cls.TMDB_HEADERS,  # ✅ 使用 Bearer Token
+                params={"page": random_page},
                 timeout=10,
             )
             response.raise_for_status()
 
             data = response.json()
             movie_ids = [movie["id"] for movie in data.get("results", [])]
+
+            # 如果需要更多电影，从相邻页获取
+            if len(movie_ids) < limit and random_page < 5:
+                response = requests.get(
+                    f"{cls.TMDB_BASE_URL}/movie/popular",
+                    headers=cls.TMDB_HEADERS,
+                    params={"page": random_page + 1},
+                    timeout=10,
+                )
+                response.raise_for_status()
+                data = response.json()
+                movie_ids.extend([movie["id"] for movie in data.get("results", [])])
+
+            # 打乱顺序，增加随机性
+            random.shuffle(movie_ids)
+
+            print(
+                f"[DEBUG _get_popular_movies] Got {len(movie_ids)} movies from page {random_page}"
+            )
 
             return movie_ids[:limit]
 

@@ -1485,8 +1485,8 @@
         async function loadMovieDeck() {
             try {
                 const endpoint = IS_COMMUNITY ?
-                    `/api/communities/${GROUP_CODE}/deck/?limit=50&with_details=true` :
-                    `/api/groups/${GROUP_CODE}/deck/?limit=50&with_details=true`;
+                    `/api/communities/${GROUP_CODE}/deck/?limit=20&with_details=true` :
+                    `/api/groups/${GROUP_CODE}/deck/?limit=20&with_details=true`;
 
                 console.log('[Deck] Calling endpoint:', endpoint);
                 const response = await fetch(endpoint);
@@ -1549,7 +1549,11 @@
             const remaining = MOVIES.length - currentIndex;
             const cardsRemainingEl = document.getElementById('cards-remaining');
             if (cardsRemainingEl) {
-                cardsRemainingEl.textContent = `${remaining} movie${remaining !== 1 ? 's' : ''} remaining`;
+                if (remaining === 0) {
+                    cardsRemainingEl.textContent = 'All done!'; 
+                } else {
+                    cardsRemainingEl.textContent = `${remaining} movie${remaining !== 1 ? 's' : ''} remaining`;
+                }
             }
         }
 
@@ -1859,6 +1863,8 @@
                 const response = await fetch(`/api/groups/${GROUP_CODE}/completion-status/`);
                 const data = await response.json();
 
+                updateCardsRemaining();
+                
                 console.log('[Completion Check]', data);
 
                 if (data.all_finished) {
@@ -1929,7 +1935,7 @@
                             <p class="mb-6" style="color: #999999;">
                                 Unfortunately, you didn't find any movies that everyone liked.
                             </p>
-                            <button onclick="location.reload()"
+                            <button onclick="startNewRound()" 
                                     class="px-6 py-3 rounded-lg inline-block btn-netflix">
                                 Try Again
                             </button>
@@ -2034,9 +2040,12 @@
         }
         
         async function backToRoomAndClear() {
-            // Automatically clear swipe records before returning to the lobby
+            // 返回lobby前自动清除swipe记录
+            console.log('[Back to Room] Starting clear process...');
             try {
                 const csrfToken = getCookie('csrftoken');
+                console.log('[Back to Room] Got CSRF token:', csrfToken ? 'Yes' : 'No');
+                
                 const response = await fetch(`/api/groups/${GROUP_CODE}/clear-swipes/`, {
                     method: 'POST',
                     headers: {
@@ -2045,18 +2054,21 @@
                     }
                 });
                 
+                console.log('[Back to Room] Response status:', response.status);
                 const data = await response.json();
+                console.log('[Back to Room] Response data:', data);
                 
                 if (data.success) {
                     console.log('[Back to Room] Cleared swipes, returning to lobby...');
                     location.href = `/groups/${GROUP_CODE}/room/`;
                 } else {
                     console.error('[Back to Room] Failed to clear swipes:', data.error);
-                    // Even if clearing fails, return to lobby.
+                    // 即使清除失败，也返回lobby
                     location.href = `/groups/${GROUP_CODE}/room/`;
                 }
             } catch (error) {
                 console.error('[Back to Room] Error:', error);
+                // 出错也返回lobby
                 location.href = `/groups/${GROUP_CODE}/room/`;
             }
         }
