@@ -58,9 +58,7 @@ class Command(BaseCommand):
                     )
                 )
             except User.DoesNotExist:
-                self.stdout.write(
-                    self.style.ERROR(f"User with ID {user_id} not found")
-                )
+                self.stdout.write(self.style.ERROR(f"User with ID {user_id} not found"))
         else:
             # Process all users
             users = User.objects.all()
@@ -71,7 +69,7 @@ class Command(BaseCommand):
             errors = 0
 
             for i in range(0, total_users, batch_size):
-                batch = users[i : i + batch_size]
+                batch = users[i : i + batch_size]  # noqa: E203
                 self.stdout.write(
                     f"Processing batch {i // batch_size + 1} ({i + 1}-{min(i + batch_size, total_users)} of {total_users})..."
                 )
@@ -100,4 +98,3 @@ class Command(BaseCommand):
                     f"  - Total preferences: {UserPreference.objects.count()}"
                 )
             )
-

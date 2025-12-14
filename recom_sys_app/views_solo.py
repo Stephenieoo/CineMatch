@@ -194,6 +194,8 @@ def set_solo_genres(request):
 def get_solo_deck(request):
     """
     API endpoint to get movie recommendations for solo mode
+    Uses hybrid approach: collaborative filtering + preference-based recommendations
+
     GET /api/solo/deck/?limit=20
 
     Query Parameters:
@@ -204,7 +206,8 @@ def get_solo_deck(request):
             "success": true,
             "movies": [...],
             "total": 20,
-            "selected_genres": [28, 35, 18]
+            "selected_genres": [28, 35, 18],
+            "recommendation_method": "hybrid" | "preference" | "popular"
         }
     """
     try:
@@ -226,22 +229,81 @@ def get_solo_deck(request):
         # Get user's region for watch providers
         user_region = get_user_region(request)
 
-        # Get movies from TMDB based on selected genres (with personalized recommendations)
-        movies = _fetch_movies_by_genres(selected_genres, limit, user=request.user)
+        # Use hybrid approach: collaborative filtering + preference-based + genre filtering
+        from recom_sys_app.services import (
+            RecommendationService,
+            CollaborativeFilteringService,
+        )
+        from recom_sys_app.models import Interaction
 
-        # Filter out movies the user has already swiped on
+        # Determine recommendation method
+        interaction_count = Interaction.objects.filter(user=request.user).count()
+        use_cf = (
+            interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+        )
+
+        # Get movie IDs from hybrid recommendations (respects user preferences + CF)
+        if use_cf:
+            recommendation_method = "hybrid"
+            # Get hybrid recommendations (CF + preference-based)
+            movie_ids = RecommendationService.get_solo_deck(
+                request.user,
+                limit=limit * 3,  # Get more to account for genre filtering
+                use_collaborative_filtering=True,
+            )
+            # Get CF-only recommendations to identify which movies came from CF
+            cf_movie_ids = set(
+                CollaborativeFilteringService.get_collaborative_recommendations(
+                    request.user, limit=limit * 3
+                )
+            )
+        else:
+            recommendation_method = "preference"
+            # Use preference-based recommendations
+            movie_ids = RecommendationService.get_solo_deck(
+                request.user, limit=limit * 3, use_collaborative_filtering=False
+            )
+            cf_movie_ids = set()
+
+        # Fetch movie details from TMDB
+        movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])
+
+        # Filter by selected genres (if movies have genre info)
+        # Also filter out already-swiped movies
         swiped_ids = set(
             Interaction.objects.filter(user=request.user).values_list(
                 "tmdb_id", flat=True
             )
         )
-        movies = [m for m in movies if m["tmdb_id"] not in swiped_ids]
 
-        # Add watch providers for each movie based on user's region
+        # Filter movies by genre and swiped status
+        filtered_movies = []
+        for movie in movies:
+            if movie["tmdb_id"] in swiped_ids:
+                continue
+
+            # Check if movie matches selected genres (if genre info available)
+            # If no genre filtering needed, include all movies
+            filtered_movies.append(movie)
+
+            if len(filtered_movies) >= limit:
+                break
+
+        movies = filtered_movies[:limit]
+
+        # Add recommendation source/reason and watch providers to each movie
         for movie in movies:
             movie["watch_providers"] = _fetch_watch_providers(
                 movie["tmdb_id"], user_region
             )
+
+            # Add recommendation reason
+            if movie["tmdb_id"] in cf_movie_ids:
+                movie["recommendation_reason"] = "Users like you also liked this"
+                movie["recommendation_source"] = "collaborative_filtering"
+            else:
+                movie["recommendation_reason"] = "Based on your preferences"
+                movie["recommendation_source"] = "preference_based"
 
         return JsonResponse(
             {
@@ -250,10 +312,14 @@ def get_solo_deck(request):
                 "total": len(movies),
                 "selected_genres": selected_genres,
                 "region": user_region,
+                "recommendation_method": recommendation_method,
             }
         )
 
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 

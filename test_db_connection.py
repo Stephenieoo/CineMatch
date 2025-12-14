@@ -18,8 +18,8 @@ except Exception as e:
     print("Attempting direct connection...")
     django.setup = lambda: None
 
-from django.db import connection
-from django.conf import settings
+from django.db import connection  # noqa: E402
+from django.conf import settings  # noqa: E402
 
 print("=" * 60)
 print("Database Connection Test")
@@ -27,7 +27,7 @@ print("=" * 60)
 print()
 
 # Display connection parameters (mask password)
-db_config = settings.DATABASES['default']
+db_config = settings.DATABASES["default"]
 print("Connection parameters:")
 print(f"  Engine: {db_config.get('ENGINE', 'N/A')}")
 print(f"  Host: {db_config.get('HOST', 'localhost (default)')}")
@@ -72,6 +72,7 @@ try:
         # Check Django migrations status
         try:
             from django.db.migrations.recorder import MigrationRecorder
+
             recorder = MigrationRecorder(connection)
             applied = recorder.applied_migrations()
             if applied:

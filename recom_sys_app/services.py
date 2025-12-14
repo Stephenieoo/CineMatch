@@ -1,11 +1,16 @@
 # recom_sys_app/services.py
 from django.core.cache import cache
+from django.db.models import Count
+from django.contrib.auth import get_user_model
 
 # Count imported locally where needed
-from collections import Counter
+from collections import Counter, defaultdict
 import requests
 import os
+import math
 from .models import GroupMember, GroupSwipe, Interaction, UserProfile
+
+User = get_user_model()
 
 
 class RecommendationService:
@@ -124,44 +129,98 @@ class RecommendationService:
         return filtered_movies[:limit]
 
     @classmethod
-    def get_solo_deck(cls, user, limit=50):
+    def get_solo_deck(cls, user, limit=50, use_collaborative_filtering=True):
         """
         Generate personalized movie recommendations for solo mode.
-        Uses UserPreference data if available for better personalization.
+        Uses hybrid approach: collaborative filtering + preference-based recommendations.
 
         Args:
             user: User instance
             limit: Number of movies to return
+            use_collaborative_filtering: Whether to use collaborative filtering (default: True)
 
         Returns:
             list: Movie tmdb_id list
         """
         # Check cache
-        cache_key = f"solo_deck_{user.id}"
+        cache_key = f"solo_deck_{user.id}_{use_collaborative_filtering}"
         cached_deck = cache.get(cache_key)
         if cached_deck:
             return cached_deck[:limit]
 
-        # Try to use preference-based recommendations first
-        from .models import UserPreference
+        # Get user's interaction count to determine best approach
+        interaction_count = Interaction.objects.filter(user=user).count()
 
-        try:
-            preference = UserPreference.objects.get(user=user)
-            if preference.genre_preferences and preference.total_interactions > 0:
-                # Use preference-based recommendations
-                movie_ids = cls._generate_solo_recommendations_from_preferences(
-                    user, preference, limit * 2
+        # Use hybrid approach if CF is enabled and user has enough interactions
+        if (
+            use_collaborative_filtering
+            and interaction_count
+            >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+        ):
+            try:
+                # Try hybrid recommendations (collaborative + preference-based)
+                movie_ids = CollaborativeFilteringService.get_hybrid_recommendations(
+                    user,
+                    limit=limit * 2,
+                    cf_weight=0.4,  # 40% collaborative filtering
+                    preference_weight=0.4,  # 40% preference-based
+                    popular_weight=0.2,  # 20% popular movies fallback
                 )
-            else:
-                # Fallback to history-based
+
+                # If hybrid didn't return enough, supplement with preference-based
+                if len(movie_ids) < limit:
+                    from .models import UserPreference
+
+                    try:
+                        preference = UserPreference.objects.get(user=user)
+                        if (
+                            preference.genre_preferences
+                            and preference.total_interactions > 0
+                        ):
+                            pref_movies = (
+                                cls._generate_solo_recommendations_from_preferences(
+                                    user, preference, limit * 2
+                                )
+                            )
+                            # Add unique movies from preference-based
+                            existing_ids = set(movie_ids)
+                            for tmdb_id in pref_movies:
+                                if tmdb_id not in existing_ids:
+                                    movie_ids.append(tmdb_id)
+                    except UserPreference.DoesNotExist:
+                        pass
+
+            except Exception as e:
+                # Fallback to preference-based if CF fails
+                print(
+                    f"Collaborative filtering failed: {e}, falling back to preference-based"
+                )
                 movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
                     user, limit * 2
                 )
-        except UserPreference.DoesNotExist:
-            # No preferences yet, use history/profile
-            movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
-                user, limit * 2
-            )
+        else:
+            # Use preference-based recommendations (original approach)
+            from .models import UserPreference
+
+            try:
+                preference = UserPreference.objects.get(user=user)
+                if preference.genre_preferences and preference.total_interactions > 0:
+                    # Use preference-based recommendations
+                    movie_ids = cls._generate_solo_recommendations_from_preferences(
+                        user, preference, limit * 2
+                    )
+                else:
+                    # Fallback to history-based
+                    movie_ids = (
+                        cls._generate_solo_recommendations_from_history_or_profile(
+                            user, limit * 2
+                        )
+                    )
+            except UserPreference.DoesNotExist:
+                # No preferences yet, use history/profile
+                movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
+                    user, limit * 2
+                )
 
         # Filter out already-swiped movies
         swiped_ids = set(
@@ -952,7 +1011,6 @@ class PreferenceService:
         """
         from .models import UserPreference, Interaction
         from django.db import transaction
-        from collections import Counter
         from django.utils import timezone
         from datetime import timedelta
 
@@ -984,7 +1042,9 @@ class PreferenceService:
         ).count()
 
         # Calculate average rating
-        ratings = interactions.exclude(rating__isnull=True).values_list("rating", flat=True)
+        ratings = interactions.exclude(rating__isnull=True).values_list(
+            "rating", flat=True
+        )
         average_rating = sum(ratings) / len(ratings) if ratings else None
 
         # Calculate genre preferences
@@ -1019,7 +1079,9 @@ class PreferenceService:
 
             for genre, weight in genre_weights.items():
                 # Normalize: (weight - min) / range
-                normalized = (weight - min_weight) / weight_range if weight_range > 0 else 0.5
+                normalized = (
+                    (weight - min_weight) / weight_range if weight_range > 0 else 0.5
+                )
                 # Ensure it's between 0.0 and 1.0
                 genre_preferences[genre] = max(0.0, min(1.0, normalized))
 
@@ -1029,7 +1091,7 @@ class PreferenceService:
         # Can be enhanced later with a separate endpoint or background job
         preferred_actors = []
         preferred_directors = []
-        
+
         # Optional: Fetch credits for top liked movies (can be expensive)
         # Uncomment if you want to track actors/directors
         # for tmdb_id in liked_movies[:10]:  # Limit to avoid API rate limits
@@ -1089,3 +1151,371 @@ class PreferenceService:
             return preference.genre_preferences or {}
         except UserPreference.DoesNotExist:
             return {}
+
+
+class CollaborativeFilteringService:
+    """
+    Collaborative Filtering Service for movie recommendations.
+
+    Uses user-based collaborative filtering to find similar users and recommend
+    movies based on what similar users liked.
+
+    Features:
+    - User similarity calculation using cosine similarity
+    - Cached similarity matrices for performance
+    - Integration with preference-based recommendations
+    - Hybrid recommendation approach
+    """
+
+    # Cache timeouts
+    SIMILARITY_CACHE_TIMEOUT = 86400  # 24 hours (user similarities don't change often)
+    RECOMMENDATION_CACHE_TIMEOUT = 3600  # 1 hour (recommendations per user)
+    MIN_INTERACTIONS_FOR_CF = 3  # Minimum interactions needed for CF to work
+    MIN_SIMILAR_USERS = 3  # Minimum similar users needed for recommendations
+    SIMILARITY_THRESHOLD = 0.1  # Minimum similarity score (0.0-1.0)
+
+    @classmethod
+    def get_user_interaction_vector(cls, user):
+        """
+        Build interaction vector for a user.
+
+        Returns a dict mapping tmdb_id -> interaction score:
+        - LIKE: 2.0
+        - WATCHED_LIKED: 2.0
+        - DISLIKE: -1.0
+        - WATCHED_DISLIKED: -1.0
+        - WATCH_LATER: 0.5
+        - WATCHED: 0.0 (neutral)
+
+        Args:
+            user: User instance
+
+        Returns:
+            dict: {tmdb_id: score, ...}
+        """
+        interactions = Interaction.objects.filter(user=user).select_related()
+
+        vector = {}
+        for interaction in interactions:
+            tmdb_id = interaction.tmdb_id
+            status = interaction.status
+
+            # Map status to score
+            if status in [Interaction.Status.LIKE, Interaction.Status.WATCHED_LIKED]:
+                score = 2.0
+            elif status in [
+                Interaction.Status.DISLIKE,
+                Interaction.Status.WATCHED_DISLIKED,
+            ]:
+                score = -1.0
+            elif status == Interaction.Status.WATCH_LATER:
+                score = 0.5
+            else:  # WATCHED (neutral)
+                score = 0.0
+
+            # If user has a rating, incorporate it
+            if interaction.rating:
+                # Normalize rating (1-10) to (-1, 1) range
+                normalized_rating = (interaction.rating - 5.5) / 4.5
+                score = score + normalized_rating * 0.5
+
+            # Accumulate scores if user has multiple interactions with same movie
+            vector[tmdb_id] = vector.get(tmdb_id, 0.0) + score
+
+        return vector
+
+    @classmethod
+    def cosine_similarity(cls, vector1, vector2):
+        """
+        Calculate cosine similarity between two interaction vectors.
+
+        Args:
+            vector1: dict of {tmdb_id: score, ...}
+            vector2: dict of {tmdb_id: score, ...}
+
+        Returns:
+            float: Similarity score between 0.0 and 1.0
+        """
+        # Get intersection of movies both users interacted with
+        common_movies = set(vector1.keys()) & set(vector2.keys())
+
+        if not common_movies:
+            return 0.0
+
+        # Calculate dot product and magnitudes
+        dot_product = sum(vector1[movie] * vector2[movie] for movie in common_movies)
+
+        magnitude1 = math.sqrt(sum(score**2 for score in vector1.values()))
+        magnitude2 = math.sqrt(sum(score**2 for score in vector2.values()))
+
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+
+        # Cosine similarity: dot product / (magnitude1 * magnitude2)
+        similarity = dot_product / (magnitude1 * magnitude2)
+
+        # Normalize to 0.0-1.0 range (cosine similarity is -1 to 1, but with our scoring it's usually 0-1)
+        return max(0.0, min(1.0, similarity))
+
+    @classmethod
+    def find_similar_users(cls, user, limit=20, min_similarity=None):
+        """
+        Find users similar to the given user based on interaction patterns.
+
+        Args:
+            user: User instance
+            limit: Maximum number of similar users to return
+            min_similarity: Minimum similarity threshold (default: SIMILARITY_THRESHOLD)
+
+        Returns:
+            list: List of tuples (similar_user, similarity_score) sorted by score descending
+        """
+        if min_similarity is None:
+            min_similarity = cls.SIMILARITY_THRESHOLD
+
+        # Check cache
+        cache_key = f"similar_users_{user.id}"
+        cached_similar = cache.get(cache_key)
+        if cached_similar:
+            return cached_similar[:limit]
+
+        # Get user's interaction vector
+        user_vector = cls.get_user_interaction_vector(user)
+
+        if len(user_vector) < cls.MIN_INTERACTIONS_FOR_CF:
+            # User doesn't have enough interactions for CF
+            return []
+
+        # Get all other users with interactions
+        other_users = (
+            User.objects.exclude(id=user.id)
+            .filter(interactions__isnull=False)
+            .distinct()
+        )
+
+        similar_users = []
+        for other_user in other_users:
+            other_vector = cls.get_user_interaction_vector(other_user)
+
+            if len(other_vector) < cls.MIN_INTERACTIONS_FOR_CF:
+                continue
+
+            similarity = cls.cosine_similarity(user_vector, other_vector)
+
+            if similarity >= min_similarity:
+                similar_users.append((other_user, similarity))
+
+        # Sort by similarity (descending)
+        similar_users.sort(key=lambda x: x[1], reverse=True)
+
+        # Cache results
+        cache.set(cache_key, similar_users, cls.SIMILARITY_CACHE_TIMEOUT)
+
+        return similar_users[:limit]
+
+    @classmethod
+    def get_collaborative_recommendations(cls, user, limit=50, min_similar_users=None):
+        """
+        Get movie recommendations using collaborative filtering.
+
+        Strategy:
+        1. Find similar users
+        2. Get movies they liked (that current user hasn't seen)
+        3. Score movies by weighted similarity (more similar users = higher score)
+        4. Return top recommendations
+
+        Args:
+            user: User instance
+            limit: Maximum number of recommendations
+            min_similar_users: Minimum number of similar users needed (default: MIN_SIMILAR_USERS)
+
+        Returns:
+            list: List of tmdb_id recommendations sorted by score
+        """
+        if min_similar_users is None:
+            min_similar_users = cls.MIN_SIMILAR_USERS
+
+        # Check cache
+        cache_key = f"cf_recommendations_{user.id}"
+        cached_recs = cache.get(cache_key)
+        if cached_recs:
+            return cached_recs[:limit]
+
+        # Find similar users
+        similar_users = cls.find_similar_users(user, limit=50)
+
+        if len(similar_users) < min_similar_users:
+            # Not enough similar users for reliable recommendations
+            return []
+
+        # Get movies current user has already interacted with
+        user_interactions = set(
+            Interaction.objects.filter(user=user).values_list("tmdb_id", flat=True)
+        )
+
+        # Score movies based on similar users' preferences
+        movie_scores = defaultdict(float)
+        movie_counts = defaultdict(int)
+
+        for similar_user, similarity_score in similar_users:
+            # Get movies similar user liked
+            liked_movies = Interaction.objects.filter(
+                user=similar_user,
+                status__in=[Interaction.Status.LIKE, Interaction.Status.WATCHED_LIKED],
+            ).values_list("tmdb_id", flat=True)
+
+            # Score each movie by similarity weight
+            for tmdb_id in liked_movies:
+                if tmdb_id not in user_interactions:
+                    # Weight by similarity: more similar users = higher score
+                    movie_scores[tmdb_id] += similarity_score
+                    movie_counts[tmdb_id] += 1
+
+        if not movie_scores:
+            return []
+
+        # Normalize scores by number of similar users who liked it
+        # Movies liked by more similar users get higher scores
+        for tmdb_id in movie_scores:
+            # Average similarity score * log(count) to favor movies liked by multiple similar users
+            count = movie_counts[tmdb_id]
+            movie_scores[tmdb_id] = movie_scores[tmdb_id] * (1 + math.log(count + 1))
+
+        # Sort by score and return top movies
+        sorted_movies = sorted(movie_scores.items(), key=lambda x: x[1], reverse=True)
+        recommendations = [tmdb_id for tmdb_id, _ in sorted_movies]
+
+        # Cache results
+        cache.set(cache_key, recommendations, cls.RECOMMENDATION_CACHE_TIMEOUT)
+
+        return recommendations[:limit]
+
+    @classmethod
+    def get_hybrid_recommendations(
+        cls, user, limit=50, cf_weight=0.4, preference_weight=0.4, popular_weight=0.2
+    ):
+        """
+        Get hybrid recommendations combining collaborative filtering and preference-based approaches.
+
+        Args:
+            user: User instance
+            limit: Maximum number of recommendations
+            cf_weight: Weight for collaborative filtering (0.0-1.0)
+            preference_weight: Weight for preference-based (0.0-1.0)
+            popular_weight: Weight for popular movies fallback (0.0-1.0)
+
+        Returns:
+            list: List of tmdb_id recommendations
+        """
+        # Normalize weights
+        total_weight = cf_weight + preference_weight + popular_weight
+        if total_weight > 0:
+            cf_weight /= total_weight
+            preference_weight /= total_weight
+            popular_weight /= total_weight
+
+        # Check cache
+        cache_key = f"hybrid_recommendations_{user.id}_{cf_weight}_{preference_weight}"
+        cached_recs = cache.get(cache_key)
+        if cached_recs:
+            return cached_recs[:limit]
+
+        all_movies = {}
+
+        # 1. Get collaborative filtering recommendations
+        cf_movies = cls.get_collaborative_recommendations(user, limit=limit * 2)
+        for idx, tmdb_id in enumerate(cf_movies):
+            score = (len(cf_movies) - idx) * cf_weight  # Higher rank = higher score
+            all_movies[tmdb_id] = all_movies.get(tmdb_id, 0.0) + score
+
+        # 2. Get preference-based recommendations
+        try:
+            from .models import UserPreference
+
+            preference = UserPreference.objects.get(user=user)
+            if preference.genre_preferences and preference.total_interactions > 0:
+                pref_movies = RecommendationService._generate_solo_recommendations_from_preferences(
+                    user, preference, limit * 2
+                )
+                for idx, tmdb_id in enumerate(pref_movies):
+                    score = (len(pref_movies) - idx) * preference_weight
+                    all_movies[tmdb_id] = all_movies.get(tmdb_id, 0.0) + score
+        except Exception:
+            pass  # Fallback if preferences don't exist
+
+        # 3. Add popular movies as fallback (lower weight)
+        if popular_weight > 0:
+            popular_movies = RecommendationService._get_popular_movies(limit=limit)
+            for idx, tmdb_id in enumerate(popular_movies):
+                score = (
+                    (len(popular_movies) - idx) * popular_weight * 0.5
+                )  # Lower weight for popular
+                all_movies[tmdb_id] = all_movies.get(tmdb_id, 0.0) + score
+
+        # Sort by combined score
+        sorted_movies = sorted(all_movies.items(), key=lambda x: x[1], reverse=True)
+        recommendations = [tmdb_id for tmdb_id, _ in sorted_movies]
+
+        # Cache results
+        cache.set(cache_key, recommendations, cls.RECOMMENDATION_CACHE_TIMEOUT)
+
+        return recommendations[:limit]
+
+    @classmethod
+    def invalidate_user_cache(cls, user):
+        """
+        Invalidate all cached data for a user (call when user interactions change).
+
+        Args:
+            user: User instance
+        """
+        cache_keys = [
+            f"similar_users_{user.id}",
+            f"cf_recommendations_{user.id}",
+        ]
+
+        # Also invalidate hybrid recommendations (pattern matching)
+        # Note: Django cache doesn't support pattern deletion, so we'll clear common patterns
+        for key in cache_keys:
+            cache.delete(key)
+
+        # Invalidate hybrid cache (approximate - clear all hybrid for this user)
+        # In production, consider using cache versioning or Redis with pattern deletion
+        for weight_cf in [0.3, 0.4, 0.5]:
+            for weight_pref in [0.3, 0.4, 0.5]:
+                cache.delete(
+                    f"hybrid_recommendations_{user.id}_{weight_cf}_{weight_pref}"
+                )
+
+    @classmethod
+    def precompute_similarities(cls, user_ids=None, batch_size=100):
+        """
+        Precompute user similarities for better performance.
+        Useful for background jobs to warm up the cache.
+
+        Args:
+            user_ids: List of user IDs to precompute (None = all active users)
+            batch_size: Number of users to process at a time
+        """
+        if user_ids is None:
+            # Get all users with at least MIN_INTERACTIONS_FOR_CF interactions
+            user_ids = list(
+                User.objects.annotate(interaction_count=Count("interactions"))
+                .filter(interaction_count__gte=cls.MIN_INTERACTIONS_FOR_CF)
+                .values_list("id", flat=True)
+            )
+
+        processed = 0
+        for user_id in user_ids:
+            try:
+                user = User.objects.get(id=user_id)
+                # This will compute and cache similarities
+                cls.find_similar_users(user, limit=20)
+                processed += 1
+
+                if processed % batch_size == 0:
+                    print(f"Processed {processed} users...")
+            except User.DoesNotExist:
+                continue
+
+        return processed

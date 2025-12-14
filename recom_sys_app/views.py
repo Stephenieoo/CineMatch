@@ -504,6 +504,7 @@ def _build_recommendation_agent(user, groq_api_key: str):
         # Update if stale (older than 1 hour)
         from django.utils import timezone
         from datetime import timedelta
+
         if preference.last_updated < timezone.now() - timedelta(hours=1):
             preference = PreferenceService.update_user_preferences(user)
     except UserPreference.DoesNotExist:
@@ -512,15 +513,14 @@ def _build_recommendation_agent(user, groq_api_key: str):
 
     # Build preference-based context (more robust than just listing movies)
     preference_context = []
-    
+
     # Genre preferences (weighted scores from actual interactions)
     if preference.genre_preferences:
         top_genres = preference.get_top_genres(limit=5)
         if top_genres:
-            genre_details = ", ".join([
-                f"{genre} ({score:.0%} preference)" 
-                for genre, score in top_genres
-            ])
+            genre_details = ", ".join(
+                [f"{genre} ({score:.0%} preference)" for genre, score in top_genres]
+            )
             preference_context.append(
                 f"Based on {preference.total_interactions} interactions, the user's top genre preferences are: {genre_details}."
             )
@@ -529,8 +529,8 @@ def _build_recommendation_agent(user, groq_api_key: str):
     if preference.total_interactions > 0:
         preference_context.append(
             f"The user has liked {preference.total_likes} movies and disliked {preference.total_dislikes} movies. "
-            f"Average rating given: {preference.average_rating_given:.1f}/10" 
-            if preference.average_rating_given 
+            f"Average rating given: {preference.average_rating_given:.1f}/10"
+            if preference.average_rating_given
             else f"The user has liked {preference.total_likes} movies and disliked {preference.total_dislikes} movies."
         )
 

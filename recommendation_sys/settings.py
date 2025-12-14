@@ -230,30 +230,23 @@ DATABASES = {
     }
 }
 
-# Use PostgreSQL if configured
-if True:  # Change to True to use PostgreSQL
+# Use PostgreSQL if configured (only when POSTGRES_HOST is explicitly set)
+postgres_host = os.getenv("POSTGRES_HOST")
+if postgres_host:  # Only use PostgreSQL if POSTGRES_HOST is set
     # Build database configuration
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("POSTGRES_DB", "cinematch_d"),
         "USER": os.getenv("POSTGRES_USER", "cinematch"),
         "PASSWORD": os.getenv("POSTGRES_PASSWORD", "cinematch123"),
+        "HOST": postgres_host,
+        "PORT": os.getenv("POSTGRES_PORT", "5432"),
         "CONN_MAX_AGE": 60,
-    }
-
-    # Add HOST and PORT only if POSTGRES_HOST is explicitly set
-    # (Travis CI uses Unix socket connection when HOST is not set)
-    postgres_host = os.getenv("POSTGRES_HOST")
-    if postgres_host:
-        db_config["HOST"] = postgres_host
-        db_config["PORT"] = os.getenv("POSTGRES_PORT", "5432")
-        db_config["OPTIONS"] = {
+        "OPTIONS": {
             "connect_timeout": 10,
             "sslmode": "require" if "rds.amazonaws.com" in postgres_host else "disable",
-        }
-    else:
-        # For Travis CI: use Unix socket (no HOST/PORT needed)
-        db_config["OPTIONS"] = {"connect_timeout": 10}
+        },
+    }
 
     DATABASES = {"default": db_config}
 
