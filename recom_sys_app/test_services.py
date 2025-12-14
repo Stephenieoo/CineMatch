@@ -56,12 +56,12 @@ class RecommendationServiceTest(TestCase):
         # Mock the API response
         mock_response = Mock()
         mock_response.json.return_value = {
-            'results': [{'id': 1}, {'id': 2}],
-            'total_pages': 2
+            "results": [{"id": 1}, {"id": 2}],
+            "total_pages": 2,
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
-        
+
         # Mock random functions to make test deterministic
         with patch("random.randint") as mock_randint, patch(
             "random.shuffle"
@@ -161,12 +161,12 @@ class RecommendationServiceTest(TestCase):
         # Mock the API response
         mock_response = Mock()
         mock_response.json.return_value = {
-            'results': [{'id': 1}, {'id': 2}, {'id': 3}],
-            'total_pages': 2
+            "results": [{"id": 1}, {"id": 2}, {"id": 3}],
+            "total_pages": 2,
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
-        
+
         with patch("random.randint") as mock_randint, patch(
             "random.choice"
         ) as mock_choice, patch("random.shuffle") as mock_shuffle:
