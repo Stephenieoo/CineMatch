@@ -14,7 +14,7 @@ Tests cover:
 
 from django.test import TestCase
 from django.core.cache import cache
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 from django.contrib.auth import get_user_model
 from recom_sys_app.services import RecommendationService
 from recom_sys_app.models import (
@@ -51,8 +51,17 @@ class RecommendationServiceTest(TestCase):
         cache.clear()
 
     @patch("recom_sys_app.services.requests.get")
-    def test_get_popular_movies_success(self):
+    def test_get_popular_movies_success(self, mock_get):  # ✅ 添加 mock_get 参数
         """Test successful retrieval of popular movies with randomization"""
+        # Mock the API response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'results': [{'id': 1}, {'id': 2}],
+            'total_pages': 2
+        }
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+        
         # Mock random functions to make test deterministic
         with patch("random.randint") as mock_randint, patch(
             "random.shuffle"
@@ -147,8 +156,17 @@ class RecommendationServiceTest(TestCase):
         self.assertEqual(genre_ids, [])
 
     @patch("recom_sys_app.services.requests.get")
-    def test_get_movies_by_genres_success(self):
+    def test_get_movies_by_genres_success(self, mock_get):
         """Test successful retrieval of movies by genres"""
+        # Mock the API response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'results': [{'id': 1}, {'id': 2}, {'id': 3}],
+            'total_pages': 2
+        }
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+        
         with patch("random.randint") as mock_randint, patch(
             "random.choice"
         ) as mock_choice, patch("random.shuffle") as mock_shuffle:
