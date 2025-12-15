@@ -264,7 +264,7 @@ class RecommendationService:
 
         # Filter by selected genres if provided
         if selected_genre_ids:
-            # When genres are selected, prioritize genre-based movies ONLY
+            # When genres are selected, prioritize genre-based movies
             # Fetch movies directly from selected genres (most efficient and accurate)
             genre_based_movies = cls._get_movies_by_genres(
                 selected_genre_ids, limit=generation_limit * 2, randomize=True
@@ -274,9 +274,54 @@ class RecommendationService:
                 mid for mid in genre_based_movies if mid not in swiped_ids
             ]
 
-            # Use ONLY genre-based movies when genres are selected
-            # This ensures all movies match the selected genres
-            filtered_movies = genre_based_movies
+            # Score and rank genre-based movies by user preferences
+            # This ensures movies match selected genres AND are personalized
+            from .models import UserPreference
+
+            try:
+                preference = UserPreference.objects.get(user=user)
+                if preference.genre_preferences and preference.total_interactions > 0:
+                    # Score movies based on genre preferences
+                    scored_movies = []
+                    genre_scores = preference.genre_preferences
+
+                    for tmdb_id in genre_based_movies:
+                        try:
+                            movie_details = cls.get_movie_details(tmdb_id)
+                            if not movie_details:
+                                continue
+
+                            # Calculate weighted score based on genre preferences
+                            movie_genres = movie_details.get("genres", [])
+                            score = 0.0
+                            genre_count = 0
+
+                            for genre_name in movie_genres:
+                                # Get preference score for this genre (0.0 to 1.0)
+                                genre_score = genre_scores.get(genre_name, 0.0)
+                                score += genre_score
+                                genre_count += 1
+
+                            # Average score across genres (or use max for stronger preference)
+                            if genre_count > 0:
+                                score = score / genre_count
+                            else:
+                                score = 0.0
+
+                            scored_movies.append((tmdb_id, score))
+                        except Exception:
+                            # If we can't get details, give it a low score
+                            scored_movies.append((tmdb_id, 0.0))
+
+                    # Sort by score (highest first) and return top movies
+                    scored_movies.sort(key=lambda x: x[1], reverse=True)
+                    filtered_movies = [tmdb_id for tmdb_id, _ in scored_movies]
+                else:
+                    # No preferences yet, use genre-based movies as-is
+                    filtered_movies = genre_based_movies
+            except UserPreference.DoesNotExist:
+                # No preferences yet, use genre-based movies as-is
+                filtered_movies = genre_based_movies
         else:
             # No genre filtering, just remove already-swiped movies
             filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
