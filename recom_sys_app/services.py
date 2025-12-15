@@ -323,14 +323,14 @@ class RecommendationService:
                     remaining = limit - len(filtered_movies)
                     if remaining > 0:
                         filtered_movies.extend(
-                            genre_filtered[genre_index:genre_index + remaining]
+                            genre_filtered[genre_index : genre_index + remaining]
                         )
                     break
                 elif genre_index >= genre_count and pref_index < pref_count:
                     remaining = limit - len(filtered_movies)
                     if remaining > 0:
                         filtered_movies.extend(
-                            pref_movies_list[pref_index:pref_index + remaining]
+                            pref_movies_list[pref_index : pref_index + remaining]
                         )
                     break
 
