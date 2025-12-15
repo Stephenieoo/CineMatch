@@ -221,10 +221,10 @@ def get_solo_deck(request):
 
         # Get limit and offset parameters
         try:
-            limit = int(request.GET.get("limit", 20))
-            limit = min(max(limit, 1), 100)  # Clamp between 1-100
+            limit = int(request.GET.get("limit", 50))  # Default to 50 movies
+            limit = min(max(limit, 50), 100)  # Clamp between 50-100 (minimum 50)
         except ValueError:
-            limit = 20
+            limit = 50  # Default to 50 movies
 
         try:
             offset = int(request.GET.get("offset", 0))
@@ -250,12 +250,16 @@ def get_solo_deck(request):
 
         # Get movie IDs from hybrid recommendations (respects user preferences + CF + genres)
         # Use offset for pagination to get different movies
+        # Ensure we request at least 50 movies (or more for pagination)
+        requested_limit = max(limit, 50)
+
         if use_cf:
             recommendation_method = "hybrid"
             # Get hybrid recommendations (CF + preference-based + genre filtering)
             movie_ids = RecommendationService.get_solo_deck(
                 request.user,
-                limit=limit * 3,  # Get more to account for genre filtering
+                limit=requested_limit
+                * 2,  # Get more to account for genre filtering and ensure 50+
                 use_collaborative_filtering=True,
                 offset=offset,
                 selected_genre_ids=selected_genres,  # Pass selected genres
@@ -263,7 +267,7 @@ def get_solo_deck(request):
             # Get CF-only recommendations to identify which movies came from CF
             cf_movie_ids = set(
                 CollaborativeFilteringService.get_collaborative_recommendations(
-                    request.user, limit=limit * 3
+                    request.user, limit=requested_limit * 2
                 )
             )
         else:
@@ -271,7 +275,8 @@ def get_solo_deck(request):
             # Use preference-based recommendations with genre filtering
             movie_ids = RecommendationService.get_solo_deck(
                 request.user,
-                limit=limit * 3,
+                limit=requested_limit
+                * 2,  # Get more to account for genre filtering and ensure 50+
                 use_collaborative_filtering=False,
                 offset=offset,
                 selected_genre_ids=selected_genres,  # Pass selected genres

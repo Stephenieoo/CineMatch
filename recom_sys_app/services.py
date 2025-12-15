@@ -265,9 +265,15 @@ class RecommendationService:
         # Filter by selected genres if provided
         if selected_genre_ids:
             # When genres are selected, prioritize genre-based movies
-            # Fetch movies directly from selected genres (most efficient and accurate)
+            # Fetch enough movies to ensure we have at least 50 after filtering
+            # Fetch more to account for swiped movies and ensure minimum 50
+            min_movies_needed = max(limit, 50)  # At least 50 movies
+            fetch_limit = max(
+                generation_limit * 2, min_movies_needed * 3
+            )  # Fetch 3x to account for swipes
+
             genre_based_movies = cls._get_movies_by_genres(
-                selected_genre_ids, limit=generation_limit * 2, randomize=True
+                selected_genre_ids, limit=fetch_limit, randomize=True
             )
             # Remove already-swiped movies from genre-based results
             genre_based_movies = [
@@ -318,10 +324,12 @@ class RecommendationService:
                     filtered_movies = [tmdb_id for tmdb_id, _ in scored_movies]
                 else:
                     # No preferences yet, use genre-based movies as-is
-                    filtered_movies = genre_based_movies
+                    # Ensure we have at least 50 movies
+                    filtered_movies = genre_based_movies[: max(limit, 50)]
             except UserPreference.DoesNotExist:
                 # No preferences yet, use genre-based movies as-is
-                filtered_movies = genre_based_movies
+                # Ensure we have at least 50 movies
+                filtered_movies = genre_based_movies[: max(limit, 50)]
         else:
             # No genre filtering, just remove already-swiped movies
             filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
@@ -349,7 +357,8 @@ class RecommendationService:
         else:
             # Cache results (cache more than limit for pagination - store 3x limit)
             cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
-            return filtered_movies[:limit]
+            # Ensure we return at least 50 movies if available, but respect the limit
+            return filtered_movies[: max(limit, min(50, len(filtered_movies)))]
 
     @classmethod
     def _generate_solo_recommendations_from_preferences(
