@@ -248,16 +248,17 @@ def get_solo_deck(request):
             interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
         )
 
-        # Get movie IDs from hybrid recommendations (respects user preferences + CF)
+        # Get movie IDs from hybrid recommendations (respects user preferences + CF + genres)
         # Use offset for pagination to get different movies
         if use_cf:
             recommendation_method = "hybrid"
-            # Get hybrid recommendations (CF + preference-based)
+            # Get hybrid recommendations (CF + preference-based + genre filtering)
             movie_ids = RecommendationService.get_solo_deck(
                 request.user,
                 limit=limit * 3,  # Get more to account for genre filtering
                 use_collaborative_filtering=True,
                 offset=offset,
+                selected_genre_ids=selected_genres,  # Pass selected genres
             )
             # Get CF-only recommendations to identify which movies came from CF
             cf_movie_ids = set(
@@ -267,12 +268,13 @@ def get_solo_deck(request):
             )
         else:
             recommendation_method = "preference"
-            # Use preference-based recommendations
+            # Use preference-based recommendations with genre filtering
             movie_ids = RecommendationService.get_solo_deck(
                 request.user,
                 limit=limit * 3,
                 use_collaborative_filtering=False,
                 offset=offset,
+                selected_genre_ids=selected_genres,  # Pass selected genres
             )
             cf_movie_ids = set()
 
@@ -287,15 +289,33 @@ def get_solo_deck(request):
             )
         )
 
-        # Filter movies by genre and swiped status
+        # Filter movies by genre and swiped status (backup check)
         filtered_movies = []
+        selected_genre_set = set(selected_genres)  # Convert to set for faster lookup
+
         for movie in movies:
             if movie["tmdb_id"] in swiped_ids:
                 continue
 
-            # Check if movie matches selected genres (if genre info available)
-            # If no genre filtering needed, include all movies
-            filtered_movies.append(movie)
+            # Check if movie matches selected genres (backup filter)
+            movie_genres = movie.get("genres", [])
+            # Handle both list of genre names and list of genre IDs
+            movie_genre_ids = []
+            for genre in movie_genres:
+                if isinstance(genre, dict) and "id" in genre:
+                    movie_genre_ids.append(genre["id"])
+                elif isinstance(genre, int):
+                    movie_genre_ids.append(genre)
+                # If genre is a string (name), we'll check by name mapping if needed
+
+            # Check if movie matches any selected genre
+            # If movie has genre info, filter by it; otherwise include it (service already filtered)
+            if movie_genre_ids:
+                if any(gid in selected_genre_set for gid in movie_genre_ids):
+                    filtered_movies.append(movie)
+            else:
+                # No genre info available, include it (service should have filtered already)
+                filtered_movies.append(movie)
 
             if len(filtered_movies) >= limit:
                 break

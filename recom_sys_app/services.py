@@ -29,7 +29,9 @@ class RecommendationService:
     CACHE_TIMEOUT = 3600  # 1小时缓存
 
     @classmethod
-    def get_group_deck(cls, group_session, user=None, limit=50):
+    def get_group_deck(
+        cls, group_session, user=None, limit=50, selected_genre_ids=None
+    ):
         """
         为群组生成个性化电影推荐列表
 
@@ -37,6 +39,7 @@ class RecommendationService:
             group_session: GroupSession 实例
             user: User 实例（可选，用于过滤该用户已滑过的电影）
             limit: 返回电影数量
+            selected_genre_ids: Optional list of genre IDs to filter by (default: None)
 
         Returns:
             list: 电影 tmdb_id 列表
@@ -84,13 +87,69 @@ class RecommendationService:
         # 移除已滑过的电影
         filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
 
+        # Filter by selected genres if provided
+        if selected_genre_ids:
+            # First, fetch movies directly from selected genres (most efficient)
+            genre_based_movies = cls._get_movies_by_genres(
+                selected_genre_ids, limit=limit * 3, randomize=True
+            )
+            # Remove already-swiped movies from genre-based results
+            genre_based_movies = [
+                mid for mid in genre_based_movies if mid not in swiped_ids
+            ]
+
+            # Also filter the group recommendations by genre
+            # (to combine group-based recommendations with genre filtering)
+            genre_filtered_group = []
+            for tmdb_id in filtered_movies[
+                : limit * 3
+            ]:  # Check up to 3x limit for variety
+                if tmdb_id in swiped_ids:
+                    continue
+                try:
+                    movie_details = cls.get_movie_details(tmdb_id)
+                    if movie_details:
+                        # Get genre IDs from movie
+                        movie_genres = movie_details.get("genres", [])
+                        movie_genre_ids = []
+                        for genre in movie_genres:
+                            if isinstance(genre, dict) and "id" in genre:
+                                movie_genre_ids.append(genre.get("id"))
+                            elif isinstance(genre, int):
+                                movie_genre_ids.append(genre)
+
+                        # Check if movie matches any selected genre
+                        if any(gid in selected_genre_ids for gid in movie_genre_ids):
+                            genre_filtered_group.append(tmdb_id)
+
+                        if len(genre_filtered_group) >= limit * 2:
+                            break
+                except Exception:
+                    # If we can't fetch details, skip it (we have genre-based movies)
+                    continue
+
+            # Combine genre-based and filtered group recommendations
+            # Prioritize genre-based (they're guaranteed to match), then supplement with group
+            # Use dict.fromkeys to preserve order and remove duplicates
+            combined_ids = list(
+                dict.fromkeys(genre_based_movies + genre_filtered_group)
+            )
+            filtered_movies = [mid for mid in combined_ids if mid not in swiped_ids]
+
         # 缓存结果
         cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
 
         return filtered_movies[:limit]
 
     @classmethod
-    def get_solo_deck(cls, user, limit=50, use_collaborative_filtering=True, offset=0):
+    def get_solo_deck(
+        cls,
+        user,
+        limit=50,
+        use_collaborative_filtering=True,
+        offset=0,
+        selected_genre_ids=None,
+    ):
         """
         Generate personalized movie recommendations for solo mode.
         Uses hybrid approach: collaborative filtering + preference-based recommendations.
@@ -101,6 +160,7 @@ class RecommendationService:
             limit: Number of movies to return
             use_collaborative_filtering: Whether to use collaborative filtering (default: True)
             offset: Offset for pagination (default: 0)
+            selected_genre_ids: Optional list of genre IDs to filter by (default: None)
 
         Returns:
             list: Movie tmdb_id list
@@ -202,8 +262,54 @@ class RecommendationService:
             Interaction.objects.filter(user=user).values_list("tmdb_id", flat=True)
         )
 
-        # Remove already-swiped movies
-        filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
+        # Filter by selected genres if provided
+        if selected_genre_ids:
+            # First, fetch movies directly from selected genres (most efficient)
+            genre_based_movies = cls._get_movies_by_genres(
+                selected_genre_ids, limit=generation_limit, randomize=True
+            )
+            # Remove already-swiped movies from genre-based results
+            genre_based_movies = [
+                mid for mid in genre_based_movies if mid not in swiped_ids
+            ]
+
+            # Also filter the hybrid/preference-based recommendations by genre
+            # (to combine personalized recommendations with genre filtering)
+            genre_filtered_hybrid = []
+            for tmdb_id in movie_ids[: limit * 3]:  # Check up to 3x limit for variety
+                if tmdb_id in swiped_ids:
+                    continue
+                try:
+                    movie_details = cls.get_movie_details(tmdb_id)
+                    if movie_details:
+                        # Get genre IDs from movie
+                        movie_genres = movie_details.get("genres", [])
+                        movie_genre_ids = []
+                        for genre in movie_genres:
+                            if isinstance(genre, dict) and "id" in genre:
+                                movie_genre_ids.append(genre.get("id"))
+                            elif isinstance(genre, int):
+                                movie_genre_ids.append(genre)
+
+                        # Check if movie matches any selected genre
+                        if any(gid in selected_genre_ids for gid in movie_genre_ids):
+                            genre_filtered_hybrid.append(tmdb_id)
+
+                        if len(genre_filtered_hybrid) >= limit * 2:
+                            break
+                except Exception:
+                    # If we can't fetch details, skip it (we have genre-based movies)
+                    continue
+
+            # Combine genre-based and filtered hybrid recommendations
+            # Prioritize genre-based, then supplement with hybrid
+            combined_ids = list(
+                dict.fromkeys(genre_based_movies + genre_filtered_hybrid)
+            )
+            filtered_movies = [mid for mid in combined_ids if mid not in swiped_ids]
+        else:
+            # No genre filtering, just remove already-swiped movies
+            filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
 
         # Add randomization for variety (shuffle to avoid same order every time)
         import random
