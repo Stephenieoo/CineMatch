@@ -253,22 +253,26 @@ class RecommendationService:
                 mid for mid in genre_based_movies if mid not in swiped_ids
             ]
 
-            # Add 1-2 preference-based movies if user has preferences
+            # Add 20-30% preference-based movies if user has preferences
             pref_movies_list = []
             try:
                 from .models import UserPreference
 
                 preference = UserPreference.objects.get(user=user)
                 if preference.genre_preferences and preference.total_interactions > 0:
-                    # Get 2-3 preference-based movies
+                    # Calculate target: 20-30% of the deck should be preference-based
+                    target_pref_count = max(
+                        int(limit * 0.25), 10
+                    )  # At least 10, or 25% of limit
+                    # Get more preference-based movies (we'll filter and mix them)
                     pref_movies = cls._generate_solo_recommendations_from_preferences(
-                        user, preference, limit=3
+                        user, preference, limit=target_pref_count * 2
                     )
                     # Filter out swiped and ensure they match selected genres
                     pref_filtered = []
                     for mid in pref_movies:
                         if mid not in swiped_ids and mid not in genre_filtered:
-                            # Verify movie matches selected genres
+                            # Verify movie matches selected genres (use cached details if available)
                             movie_details = cls.get_movie_details(mid)
                             if movie_details:
                                 movie_genres = movie_details.get("genres", [])
@@ -281,19 +285,57 @@ class RecommendationService:
                                     gid in selected_genre_ids for gid in movie_genre_ids
                                 ):
                                     pref_filtered.append(mid)
-                    # Track preference-based movie IDs (first 1-2)
-                    pref_movies_list = pref_filtered[:2]
+                                    if len(pref_filtered) >= target_pref_count:
+                                        break
+                    # Track preference-based movie IDs
+                    pref_movies_list = pref_filtered[:target_pref_count]
                     preference_based_ids = set(pref_movies_list)
             except UserPreference.DoesNotExist:
                 pass  # No preferences, skip
 
-            # Combine: preference-based first, then genre-based
-            filtered_movies = pref_movies_list + genre_filtered
+            # Mix preference-based and genre-based movies throughout the deck
+            # Strategy: Interleave them (every 3-4 genre movies, add 1 preference movie)
+            filtered_movies = []
+            pref_index = 0
+            genre_index = 0
+            pref_count = len(pref_movies_list)
+            genre_count = len(genre_filtered)
 
-            # Ensure we have at least 50 movies
-            filtered_movies = filtered_movies[
-                : max(limit, min(50, len(filtered_movies)))
-            ]
+            # Mix movies: for every 3 genre movies, add 1 preference movie
+            while len(filtered_movies) < limit and (
+                pref_index < pref_count or genre_index < genre_count
+            ):
+                # Add genre-based movies in batches of 3
+                for _ in range(3):
+                    if genre_index < genre_count:
+                        filtered_movies.append(genre_filtered[genre_index])
+                        genre_index += 1
+                        if len(filtered_movies) >= limit:
+                            break
+
+                # Add 1 preference-based movie after every 3 genre movies
+                if pref_index < pref_count and len(filtered_movies) < limit:
+                    filtered_movies.append(pref_movies_list[pref_index])
+                    pref_index += 1
+
+                # If we run out of one type, fill with the other
+                if pref_index >= pref_count and genre_index < genre_count:
+                    remaining = limit - len(filtered_movies)
+                    if remaining > 0:
+                        filtered_movies.extend(
+                            genre_filtered[genre_index : genre_index + remaining]
+                        )
+                    break
+                elif genre_index >= genre_count and pref_index < pref_count:
+                    remaining = limit - len(filtered_movies)
+                    if remaining > 0:
+                        filtered_movies.extend(
+                            pref_movies_list[pref_index : pref_index + remaining]
+                        )
+                    break
+
+            # Ensure we have at most the requested limit
+            filtered_movies = filtered_movies[:limit]
 
             # Store preference-based IDs in cache for the view to retrieve
             if preference_based_ids:
