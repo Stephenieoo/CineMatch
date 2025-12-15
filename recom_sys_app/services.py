@@ -177,85 +177,14 @@ class RecommendationService:
                 return cached_deck[offset : offset + limit]  # noqa: E203
             # If cache exhausted, generate more (will be added to cache below)
 
-        # Get user's interaction count to determine best approach
-        interaction_count = Interaction.objects.filter(user=user).count()
-
+        # SIMPLIFIED: When genres are selected, skip all preference/CF logic
+        # Just use genre-based movies (handled in genre filtering section below)
         # Generate more movies for pagination (3x limit to support multiple pages)
         generation_limit = max(limit * 3, 150)  # At least 150 movies for variety
 
-        # Use hybrid approach if CF is enabled and user has enough interactions
-        if (
-            use_collaborative_filtering
-            and interaction_count
-            >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
-        ):
-            try:
-                # Try hybrid recommendations (collaborative + preference-based)
-                movie_ids = CollaborativeFilteringService.get_hybrid_recommendations(
-                    user,
-                    limit=generation_limit,
-                    cf_weight=0.4,  # 40% collaborative filtering
-                    preference_weight=0.4,  # 40% preference-based
-                    popular_weight=0.2,  # 20% popular movies fallback
-                )
-
-                # If hybrid didn't return enough, supplement with preference-based
-                if len(movie_ids) < generation_limit:
-                    from .models import UserPreference
-
-                    try:
-                        preference = UserPreference.objects.get(user=user)
-                        if (
-                            preference.genre_preferences
-                            and preference.total_interactions > 0
-                        ):
-                            pref_movies = (
-                                cls._generate_solo_recommendations_from_preferences(
-                                    user, preference, generation_limit
-                                )
-                            )
-                            # Add unique movies from preference-based
-                            existing_ids = set(movie_ids)
-                            for tmdb_id in pref_movies:
-                                if (
-                                    tmdb_id not in existing_ids
-                                    and len(movie_ids) < generation_limit * 2
-                                ):
-                                    movie_ids.append(tmdb_id)
-                    except UserPreference.DoesNotExist:
-                        pass
-
-            except Exception as e:
-                # Fallback to preference-based if CF fails
-                print(
-                    f"Collaborative filtering failed: {e}, falling back to preference-based"
-                )
-                movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
-                    user, generation_limit
-                )
-        else:
-            # Use preference-based recommendations (original approach)
-            from .models import UserPreference
-
-            try:
-                preference = UserPreference.objects.get(user=user)
-                if preference.genre_preferences and preference.total_interactions > 0:
-                    # Use preference-based recommendations
-                    movie_ids = cls._generate_solo_recommendations_from_preferences(
-                        user, preference, generation_limit
-                    )
-                else:
-                    # Fallback to history-based
-                    movie_ids = (
-                        cls._generate_solo_recommendations_from_history_or_profile(
-                            user, generation_limit
-                        )
-                    )
-            except UserPreference.DoesNotExist:
-                # No preferences yet, use history/profile
-                movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
-                    user, generation_limit
-                )
+        # Initialize empty - will be populated by genre filtering if genres selected
+        # Otherwise, use simple popular movies fallback
+        movie_ids = []
 
         # Filter out already-swiped movies
         swiped_ids = set(
@@ -264,74 +193,32 @@ class RecommendationService:
 
         # Filter by selected genres if provided
         if selected_genre_ids:
-            # When genres are selected, prioritize genre-based movies
-            # Fetch enough movies to ensure we have at least 50 after filtering
-            # Fetch more to account for swiped movies and ensure minimum 50
+            # SIMPLIFIED: Prioritize genre-based movies only
+            # Fetch many movies from selected genres (simple and direct)
             min_movies_needed = max(limit, 50)  # At least 50 movies
             fetch_limit = max(
                 generation_limit * 2, min_movies_needed * 3
             )  # Fetch 3x to account for swipes
 
+            # Get genre-based movies directly (simple approach)
             genre_based_movies = cls._get_movies_by_genres(
                 selected_genre_ids, limit=fetch_limit, randomize=True
             )
-            # Remove already-swiped movies from genre-based results
-            genre_based_movies = [
+            # Remove already-swiped movies
+            filtered_movies = [
                 mid for mid in genre_based_movies if mid not in swiped_ids
             ]
 
-            # Score and rank genre-based movies by user preferences
-            # This ensures movies match selected genres AND are personalized
-            from .models import UserPreference
-
-            try:
-                preference = UserPreference.objects.get(user=user)
-                if preference.genre_preferences and preference.total_interactions > 0:
-                    # Score movies based on genre preferences
-                    scored_movies = []
-                    genre_scores = preference.genre_preferences
-
-                    for tmdb_id in genre_based_movies:
-                        try:
-                            movie_details = cls.get_movie_details(tmdb_id)
-                            if not movie_details:
-                                continue
-
-                            # Calculate weighted score based on genre preferences
-                            movie_genres = movie_details.get("genres", [])
-                            score = 0.0
-                            genre_count = 0
-
-                            for genre_name in movie_genres:
-                                # Get preference score for this genre (0.0 to 1.0)
-                                genre_score = genre_scores.get(genre_name, 0.0)
-                                score += genre_score
-                                genre_count += 1
-
-                            # Average score across genres (or use max for stronger preference)
-                            if genre_count > 0:
-                                score = score / genre_count
-                            else:
-                                score = 0.0
-
-                            scored_movies.append((tmdb_id, score))
-                        except Exception:
-                            # If we can't get details, give it a low score
-                            scored_movies.append((tmdb_id, 0.0))
-
-                    # Sort by score (highest first) and return top movies
-                    scored_movies.sort(key=lambda x: x[1], reverse=True)
-                    filtered_movies = [tmdb_id for tmdb_id, _ in scored_movies]
-                else:
-                    # No preferences yet, use genre-based movies as-is
-                    # Ensure we have at least 50 movies
-                    filtered_movies = genre_based_movies[: max(limit, 50)]
-            except UserPreference.DoesNotExist:
-                # No preferences yet, use genre-based movies as-is
-                # Ensure we have at least 50 movies
-                filtered_movies = genre_based_movies[: max(limit, 50)]
+            # Ensure we have at least 50 movies
+            filtered_movies = filtered_movies[: max(limit, min(50, len(filtered_movies)))]
         else:
-            # No genre filtering, just remove already-swiped movies
+            # No genre filtering - use simple approach: just remove swiped movies
+            # If no genres selected, fall back to popular movies (simple)
+            if not movie_ids or len(movie_ids) < limit:
+                # Fallback to popular movies if we don't have enough
+                popular_movies = cls._get_popular_movies(limit * 2)
+                movie_ids = list(dict.fromkeys(list(movie_ids) + popular_movies))
+
             filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
 
         # Add randomization for variety (shuffle to avoid same order every time)

@@ -235,53 +235,23 @@ def get_solo_deck(request):
         # Get user's region for watch providers
         user_region = get_user_region(request)
 
-        # Use hybrid approach: collaborative filtering + preference-based + genre filtering
-        from recom_sys_app.services import (
-            RecommendationService,
-            CollaborativeFilteringService,
-        )
-        from recom_sys_app.models import Interaction
+        # SIMPLIFIED: Just use genre-based recommendations (no CF, no preference-based)
+        from recom_sys_app.services import RecommendationService
 
-        # Determine recommendation method
-        interaction_count = Interaction.objects.filter(user=request.user).count()
-        use_cf = (
-            interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
-        )
+        # Simple genre-based approach
+        recommendation_method = "genre_based"
 
-        # Get movie IDs from hybrid recommendations (respects user preferences + CF + genres)
+        # Get movie IDs from genre-based recommendations only
         # Use offset for pagination to get different movies
-        # Ensure we request at least 50 movies (or more for pagination)
         requested_limit = max(limit, 50)
 
-        if use_cf:
-            recommendation_method = "hybrid"
-            # Get hybrid recommendations (CF + preference-based + genre filtering)
-            movie_ids = RecommendationService.get_solo_deck(
-                request.user,
-                limit=requested_limit
-                * 2,  # Get more to account for genre filtering and ensure 50+
-                use_collaborative_filtering=True,
-                offset=offset,
-                selected_genre_ids=selected_genres,  # Pass selected genres
-            )
-            # Get CF-only recommendations to identify which movies came from CF
-            cf_movie_ids = set(
-                CollaborativeFilteringService.get_collaborative_recommendations(
-                    request.user, limit=requested_limit * 2
-                )
-            )
-        else:
-            recommendation_method = "preference"
-            # Use preference-based recommendations with genre filtering
-            movie_ids = RecommendationService.get_solo_deck(
-                request.user,
-                limit=requested_limit
-                * 2,  # Get more to account for genre filtering and ensure 50+
-                use_collaborative_filtering=False,
-                offset=offset,
-                selected_genre_ids=selected_genres,  # Pass selected genres
-            )
-            cf_movie_ids = set()
+        movie_ids = RecommendationService.get_solo_deck(
+            request.user,
+            limit=requested_limit * 2,  # Get more to account for filtering and ensure 50+
+            use_collaborative_filtering=False,  # Disable CF for simplicity
+            offset=offset,
+            selected_genre_ids=selected_genres,  # Pass selected genres
+        )
 
         # Fetch movie details from TMDB
         movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])
@@ -337,13 +307,9 @@ def get_solo_deck(request):
                 movie["tmdb_id"], user_region
             )
 
-            # Add recommendation reason
-            if movie["tmdb_id"] in cf_movie_ids:
-                movie["recommendation_reason"] = "Users like you also liked this"
-                movie["recommendation_source"] = "collaborative_filtering"
-            else:
-                movie["recommendation_reason"] = "Based on your preferences"
-                movie["recommendation_source"] = "preference_based"
+            # Simplified: All movies are genre-based
+            movie["recommendation_reason"] = "Based on selected genres"
+            movie["recommendation_source"] = "genre_based"
 
         return JsonResponse(
             {
