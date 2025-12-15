@@ -281,15 +281,14 @@ def get_solo_deck(request):
         # Fetch movie details from TMDB
         movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])
 
-        # Filter by selected genres (if movies have genre info)
-        # Also filter out already-swiped movies
+        # Filter out already-swiped movies
         swiped_ids = set(
             Interaction.objects.filter(user=request.user).values_list(
                 "tmdb_id", flat=True
             )
         )
 
-        # Filter movies by genre and swiped status (backup check)
+        # Filter movies by swiped status and verify genre match (strict filtering)
         filtered_movies = []
         selected_genre_set = set(selected_genres)  # Convert to set for faster lookup
 
@@ -297,25 +296,30 @@ def get_solo_deck(request):
             if movie["tmdb_id"] in swiped_ids:
                 continue
 
-            # Check if movie matches selected genres (backup filter)
-            movie_genres = movie.get("genres", [])
-            # Handle both list of genre names and list of genre IDs
-            movie_genre_ids = []
-            for genre in movie_genres:
-                if isinstance(genre, dict) and "id" in genre:
-                    movie_genre_ids.append(genre["id"])
-                elif isinstance(genre, int):
-                    movie_genre_ids.append(genre)
-                # If genre is a string (name), we'll check by name mapping if needed
+            # Strict genre filtering: movie MUST match at least one selected genre
+            # Get genre IDs from movie (now included in _tmdb_fetch_by_ids response)
+            movie_genre_ids = movie.get("genre_ids", [])
 
-            # Check if movie matches any selected genre
-            # If movie has genre info, filter by it; otherwise include it (service already filtered)
-            if movie_genre_ids:
-                if any(gid in selected_genre_set for gid in movie_genre_ids):
-                    filtered_movies.append(movie)
-            else:
-                # No genre info available, include it (service should have filtered already)
+            # Fallback: if genre_ids not available, try to extract from genres array
+            if not movie_genre_ids:
+                movie_genres = movie.get("genres", [])
+                for genre in movie_genres:
+                    if isinstance(genre, dict) and "id" in genre:
+                        movie_genre_ids.append(genre["id"])
+                    elif isinstance(genre, int):
+                        movie_genre_ids.append(genre)
+
+            # Only include movies that match selected genres
+            # Strict filtering: must have genre info and match at least one selected genre
+            if movie_genre_ids and any(
+                gid in selected_genre_set for gid in movie_genre_ids
+            ):
                 filtered_movies.append(movie)
+            # If no genre info, exclude it (service should have filtered, but be strict)
+            elif not movie_genre_ids:
+                print(
+                    f"[Warning] Movie {movie.get('tmdb_id')} has no genre info, excluding from results"
+                )
 
             if len(filtered_movies) >= limit:
                 break
@@ -845,6 +849,11 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
             r.raise_for_status()
             det = r.json()
 
+            # Extract genre IDs and names from TMDB response
+            genre_objects = det.get("genres", [])
+            genre_names = [g.get("name") for g in genre_objects]
+            genre_ids = [g.get("id") for g in genre_objects if g.get("id")]
+
             out.append(
                 {
                     "found": True,
@@ -864,7 +873,8 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
                         if det.get("backdrop_path")
                         else None
                     ),
-                    "genres": [g.get("name") for g in det.get("genres", [])],
+                    "genres": genre_names,  # Keep genre names for display
+                    "genre_ids": genre_ids,  # Add genre IDs for filtering
                     "runtime": det.get("runtime"),
                 }
             )

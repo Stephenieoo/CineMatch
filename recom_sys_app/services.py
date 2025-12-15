@@ -264,49 +264,19 @@ class RecommendationService:
 
         # Filter by selected genres if provided
         if selected_genre_ids:
-            # First, fetch movies directly from selected genres (most efficient)
+            # When genres are selected, prioritize genre-based movies ONLY
+            # Fetch movies directly from selected genres (most efficient and accurate)
             genre_based_movies = cls._get_movies_by_genres(
-                selected_genre_ids, limit=generation_limit, randomize=True
+                selected_genre_ids, limit=generation_limit * 2, randomize=True
             )
             # Remove already-swiped movies from genre-based results
             genre_based_movies = [
                 mid for mid in genre_based_movies if mid not in swiped_ids
             ]
 
-            # Also filter the hybrid/preference-based recommendations by genre
-            # (to combine personalized recommendations with genre filtering)
-            genre_filtered_hybrid = []
-            for tmdb_id in movie_ids[: limit * 3]:  # Check up to 3x limit for variety
-                if tmdb_id in swiped_ids:
-                    continue
-                try:
-                    movie_details = cls.get_movie_details(tmdb_id)
-                    if movie_details:
-                        # Get genre IDs from movie
-                        movie_genres = movie_details.get("genres", [])
-                        movie_genre_ids = []
-                        for genre in movie_genres:
-                            if isinstance(genre, dict) and "id" in genre:
-                                movie_genre_ids.append(genre.get("id"))
-                            elif isinstance(genre, int):
-                                movie_genre_ids.append(genre)
-
-                        # Check if movie matches any selected genre
-                        if any(gid in selected_genre_ids for gid in movie_genre_ids):
-                            genre_filtered_hybrid.append(tmdb_id)
-
-                        if len(genre_filtered_hybrid) >= limit * 2:
-                            break
-                except Exception:
-                    # If we can't fetch details, skip it (we have genre-based movies)
-                    continue
-
-            # Combine genre-based and filtered hybrid recommendations
-            # Prioritize genre-based, then supplement with hybrid
-            combined_ids = list(
-                dict.fromkeys(genre_based_movies + genre_filtered_hybrid)
-            )
-            filtered_movies = [mid for mid in combined_ids if mid not in swiped_ids]
+            # Use ONLY genre-based movies when genres are selected
+            # This ensures all movies match the selected genres
+            filtered_movies = genre_based_movies
         else:
             # No genre filtering, just remove already-swiped movies
             filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
