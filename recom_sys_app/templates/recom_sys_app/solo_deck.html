@@ -699,8 +699,16 @@
                 if (data.success) {
                     movies = data.movies;
                     currentIndex = 0;
-                    await renderCards();
+                    renderCards(); // Don't await - render immediately
                     updateCardsRemaining();
+                    
+                    // Preload images for first few cards in background
+                    movies.slice(0, 5).forEach(movie => {
+                        if (movie.poster_url) {
+                            const img = new Image();
+                            img.src = movie.poster_url;
+                        }
+                    });
                 } else {
                     showError('Failed to load movies');
                 }
@@ -786,13 +794,15 @@
             }
         }
 
-        async function renderCards() {
+        function renderCards() {
             const container = document.getElementById('card-container');
             container.innerHTML = '';
 
-            // Load more movies if running low (less than 5 remaining)
-            if (currentIndex >= movies.length - 5 && movies.length > 0) {
-                await loadMoreMovies();
+            // Preload more movies earlier (when 10 remaining, not 5)
+            // This ensures movies are ready before we need them
+            if (currentIndex >= movies.length - 10 && movies.length > 0) {
+                // Load in background, don't wait
+                loadMoreMovies().catch(err => console.error('Error preloading movies:', err));
             }
 
             // Render next 3 cards (for stacking effect)
@@ -800,10 +810,28 @@
                 const movie = movies[currentIndex + i];
                 const card = createCard(movie, i);
                 container.appendChild(card);
+                
+                // Preload images for next cards immediately
+                if (i === 0 && currentIndex + 1 < movies.length) {
+                    preloadNextCardImage(movies[currentIndex + 1]);
+                }
             }
 
             if (currentIndex >= movies.length) {
                 showNoMoreCards();
+            }
+        }
+
+        // Preload image for next card to reduce lag
+        function preloadNextCardImage(movie) {
+            if (!movie || !movie.poster_url) return;
+            
+            const img = new Image();
+            img.src = movie.poster_url;
+            // Also preload backdrop if available
+            if (movie.backdrop_url) {
+                const backdrop = new Image();
+                backdrop.src = movie.backdrop_url;
             }
         }
 
@@ -980,8 +1008,13 @@
             if (currentIndex >= movies.length) return;
 
             const card = document.querySelector('.swipe-card');
+            const movie = movies[currentIndex];
+            
+            // Record swipe in background (fire-and-forget, don't wait)
+            recordSwipe(action, movie);
+            
+            // Animate card removal and show next card immediately
             animateCardRemoval(card, action);
-            recordSwipe(action);
         }
 
         function animateCardRemoval(card, action) {
@@ -1010,51 +1043,57 @@
 
             card.style.opacity = '0';
 
-            setTimeout(async () => {
+            // Show next card immediately (optimistic UI)
+            // Don't wait for API calls
+            setTimeout(() => {
                 currentIndex++;
-                await renderCards();
+                renderCards(); // Don't await - render immediately
                 updateCardsRemaining();
-            }, 500);
+            }, 300); // Reduced from 500ms to 300ms for faster transition
         }
 
-        async function recordSwipe(action) {
-            const movie = movies[currentIndex];
-
-            try {
-                const response = await fetch('/api/solo/swipe/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify({
-                        tmdb_id: movie.tmdb_id,
-                        action: action,
-                        movie_title: movie.title
-                    })
+        // Fire-and-forget: don't block UI
+        function recordSwipe(action, movie) {
+            // Update UI optimistically first
+            if (action === 'like') {
+                likedMovies.unshift({
+                    ...movie,
+                    action_type: 'like'
                 });
-
-                const data = await response.json();
-
-                // Add to appropriate list based on action
-                if (data.success) {
-                    if (action === 'like') {
-                        likedMovies.unshift({
-                            ...movie,
-                            action_type: 'like'
-                        });
-                        updateLikesPanel();
-                    } else if (action === 'watched_liked') {
-                        watchedLikedMovies.unshift({
-                            ...movie,
-                            action_type: 'watched_liked'
-                        });
-                        updateLikesPanel();
-                    }
-                }
-            } catch (error) {
-                console.error('Error recording swipe:', error);
+                updateLikesPanel();
+            } else if (action === 'watched_liked') {
+                watchedLikedMovies.unshift({
+                    ...movie,
+                    action_type: 'watched_liked'
+                });
+                updateLikesPanel();
             }
+
+            // Send to server in background (don't wait)
+            fetch('/api/solo/swipe/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    tmdb_id: movie.tmdb_id,
+                    action: action,
+                    movie_title: movie.title
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Only update if there was an error (optimistic update already done)
+                if (!data.success) {
+                    console.warn('Swipe recording failed:', data);
+                    // Optionally revert optimistic update
+                }
+            })
+            .catch(error => {
+                console.error('Error recording swipe:', error);
+                // Swipe still recorded optimistically, will sync on next page load
+            });
         }
 
         function updateCardsRemaining() {
