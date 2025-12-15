@@ -475,8 +475,12 @@ def _extract_titles(agent_text: str) -> list[str]:
 def _build_recommendation_agent(user, groq_api_key: str):
     """
     Build and configure the recommendation agent with user preferences.
+    Now uses UserPreference model for more robust, data-driven recommendations.
     """
-    # Get signup movies and genres
+    from recom_sys_app.models import UserPreference
+    from recom_sys_app.services import PreferenceService
+
+    # Get signup movies and genres (fallback for new users)
     movies = _get_signup_movies(user)
     genres = _get_signup_genre(user)
 
@@ -485,14 +489,52 @@ def _build_recommendation_agent(user, groq_api_key: str):
     disliked_ids = _get_user_interactions(user, status="DISLIKE")
     watch_later_ids = _get_user_interactions(user, status="WATCH_LATER")
     watched_liked_ids = _get_user_interactions(user, status="WATCHED_LIKED")
+    watched_disliked_ids = _get_user_interactions(user, status="WATCHED_DISLIKED")
 
     # Fetch actual movie titles from IDs (limit to 10 each to avoid too many API calls)
     liked_titles = _get_movie_titles_from_ids(liked_ids, limit=10)
     disliked_titles = _get_movie_titles_from_ids(disliked_ids, limit=10)
     watch_later_titles = _get_movie_titles_from_ids(watch_later_ids, limit=10)
     watched_liked_titles = _get_movie_titles_from_ids(watched_liked_ids, limit=10)
+    watched_disliked_titles = _get_movie_titles_from_ids(watched_disliked_ids, limit=10)
 
-    # Build context about user preferences
+    # Get or create user preferences (will calculate if doesn't exist)
+    try:
+        preference = UserPreference.objects.get(user=user)
+        # Update if stale (older than 1 hour)
+        from django.utils import timezone
+        from datetime import timedelta
+
+        if preference.last_updated < timezone.now() - timedelta(hours=1):
+            preference = PreferenceService.update_user_preferences(user)
+    except UserPreference.DoesNotExist:
+        # Create preferences if they don't exist
+        preference = PreferenceService.update_user_preferences(user)
+
+    # Build preference-based context (more robust than just listing movies)
+    preference_context = []
+
+    # Genre preferences (weighted scores from actual interactions)
+    if preference.genre_preferences:
+        top_genres = preference.get_top_genres(limit=5)
+        if top_genres:
+            genre_details = ", ".join(
+                [f"{genre} ({score:.0%} preference)" for genre, score in top_genres]
+            )
+            preference_context.append(
+                f"Based on {preference.total_interactions} interactions, the user's top genre preferences are: {genre_details}."
+            )
+
+    # Interaction statistics
+    if preference.total_interactions > 0:
+        preference_context.append(
+            f"The user has liked {preference.total_likes} movies and disliked {preference.total_dislikes} movies. "
+            f"Average rating given: {preference.average_rating_given:.1f}/10"
+            if preference.average_rating_given
+            else f"The user has liked {preference.total_likes} movies and disliked {preference.total_dislikes} movies."
+        )
+
+    # Build context about user preferences (legacy support)
     affinity_text = (
         f"The user has affinity to movies like: {', '.join(movies)}"
         if movies
@@ -521,15 +563,31 @@ def _build_recommendation_agent(user, groq_api_key: str):
         if watched_liked_titles
         else ""
     )
+    watched_disliked_text = (
+        f"Movies the user has watched and did not enjoy: {', '.join(watched_disliked_titles)}"
+        if watched_disliked_titles
+        else ""
+    )
 
-    # Build instructions list, only including non-empty context
+    # Build instructions list, prioritizing preference-based data
     instructions = [
-        "You are a movie recommendation agent.",
-        affinity_text,
+        "You are an intelligent movie recommendation agent that provides personalized suggestions.",
     ]
 
+    # Add preference-based context first (most important)
+    if preference_context:
+        instructions.extend(preference_context)
+        instructions.append(
+            "Use these genre preferences as the PRIMARY guide for recommendations. "
+            "Prioritize movies in genres with higher preference scores."
+        )
+
+    # Add legacy context (for backward compatibility)
+    instructions.append(affinity_text)
     if genre_text:
         instructions.append(genre_text)
+
+    # Add specific movie examples
     if liked_text:
         instructions.append(liked_text)
     if disliked_text:
@@ -538,14 +596,21 @@ def _build_recommendation_agent(user, groq_api_key: str):
         instructions.append(watch_later_text)
     if watched_liked_text:
         instructions.append(watched_liked_text)
+    if watched_disliked_text:
+        instructions.append(watched_disliked_text)
 
     instructions.extend(
         [
-            "Recommend exactly 3 movies with a one-line reason for each.",
-            "Search for movies released after 2020 unless it belongs to one of the classic titles",
-            "Avoid recommending movies the user has already disliked or watched.",
-            "For each movie provide a score of match out of 100% based on reviews and comparison with the user's movies affinity.",
-            "Format each as: Title — Reason (Match: NN%).",
+            "Recommend exactly 3 movies that the user is MOST LIKELY to enjoy based on their preferences.",
+            "Prioritize genres with higher preference scores when making recommendations.",
+            "Search for movies released after 2020 unless it belongs to one of the classic titles.",
+            "Avoid recommending movies the user has already disliked, watched and disliked, or explicitly marked as not interested.",
+            "For each movie provide a score of match out of 100% based on:",
+            "  1. Genre preference alignment (higher weight for preferred genres)",
+            "  2. Similarity to movies the user has enjoyed",
+            "  3. Overall quality and reviews",
+            "  4. Recency and relevance",
+            "Format each as: **Title** — Reason (Match: NN%).",
             "Use markdown to format your answers.",
             'Return the three movies at the end as a JSON array of strings like: ["Movie 1", "Movie 2", "Movie 3"]',
         ]

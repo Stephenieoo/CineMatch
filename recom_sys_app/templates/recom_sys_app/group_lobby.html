@@ -609,9 +609,17 @@
         textArea.select();
         try {
           document.execCommand('copy');
-          alert('Group code copied: ' + groupCode);
+          // Show brief success message (no popup needed for copy)
+          const btn = document.getElementById('copyCodeBtn');
+          const originalText = btn.innerHTML;
+          btn.innerHTML = '✓ Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.remove('copied');
+          }, 2000);
         } catch (err) {
-          alert('Failed to copy. Group code: ' + groupCode);
+          showConfirmationModal('Error', 'Failed to copy. Group code: ' + groupCode, () => {});
         }
         document.body.removeChild(textArea);
       }
@@ -628,42 +636,118 @@
       window.location.href = '/profile/';
     });
 
-    // Leave Group (for members)
-    const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
-    if (leaveLobbyBtn) {
-      leaveLobbyBtn.addEventListener('click', async () => {
-        if (confirm('Are you sure you want to leave this group? You can rejoin later with the group code.')) {
-          try {
-            const response = await fetch(`/api/groups/${groupId}/leave/`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-              }
-            });
-            const data = await response.json();
-            if (data.success) {
-              alert(data.message);
-              window.location.href = '/profile/';
-            } else {
-              alert(data.message || 'Failed to leave group');
-            }
-          } catch (error) {
-            console.error('Error leaving group:', error);
-            alert('Failed to leave group. Please try again.');
-          }
+    // Popup confirmation modal (reusable)
+    function showConfirmationModal(title, message, onConfirm, onCancel = null, isDestructive = false) {
+      const modal = document.createElement('div');
+      modal.className = 'confirmation-modal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+        backdrop-filter: blur(10px);
+      `;
+      
+      const icon = isDestructive ? '🗑️' : '⚠️';
+      const confirmColor = isDestructive ? '#dc2626' : '#E50914';
+      const confirmHover = isDestructive ? '#b91c1c' : '#f40612';
+      
+      modal.innerHTML = `
+        <div style="
+          background: rgba(20, 20, 20, 0.95);
+          border: 2px solid ${isDestructive ? 'rgba(220, 38, 38, 0.3)' : 'rgba(229, 9, 20, 0.3)'};
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 450px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        ">
+          <div style="font-size: 3em; margin-bottom: 16px;">${icon}</div>
+          <h2 style="color: #ffffff; font-size: 1.5em; font-weight: bold; margin-bottom: 16px;">
+            ${escapeHtml(title)}
+          </h2>
+          <p style="color: #cccccc; font-size: 1em; margin-bottom: 24px; line-height: 1.5; white-space: pre-line;">
+            ${escapeHtml(message)}
+          </p>
+          <div style="display: flex; gap: 12px; justify-content: center;">
+            <button class="confirm-btn" style="
+              background: ${confirmColor};
+              color: white;
+              border: none;
+              padding: 12px 24px;
+              border-radius: 8px;
+              font-weight: 600;
+              cursor: pointer;
+              font-size: 1em;
+              transition: background 0.2s;
+            " onmouseover="this.style.background='${confirmHover}'" onmouseout="this.style.background='${confirmColor}'">
+              Confirm
+            </button>
+            <button class="cancel-btn" style="
+              background: rgba(255, 255, 255, 0.1);
+              color: #cccccc;
+              border: 2px solid rgba(255, 255, 255, 0.2);
+              padding: 12px 24px;
+              border-radius: 8px;
+              font-weight: 600;
+              cursor: pointer;
+              font-size: 1em;
+              transition: all 0.2s;
+            " onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.color='#ffffff'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.color='#cccccc'">
+              Cancel
+            </button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      const confirmBtn = modal.querySelector('.confirm-btn');
+      const cancelBtn = modal.querySelector('.cancel-btn');
+      
+      confirmBtn.addEventListener('click', () => {
+        modal.remove();
+        if (onConfirm) onConfirm();
+      });
+      
+      cancelBtn.addEventListener('click', () => {
+        modal.remove();
+        if (onCancel) onCancel();
+      });
+      
+      // Close on backdrop click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+          if (onCancel) onCancel();
         }
       });
     }
 
-    // Delete Group (for creator only)
-    const deleteGroupBtn = document.getElementById('deleteGroupBtn');
-    if (deleteGroupBtn) {
-      deleteGroupBtn.addEventListener('click', async () => {
-        if (confirm(`Are you sure you want to DELETE group "${groupCode}"? This action cannot be undone.`)) {
-          if (confirm('FINAL WARNING: All group data, matches, and member information will be permanently deleted. Continue?')) {
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Leave Group (for members)
+    const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
+    if (leaveLobbyBtn) {
+      leaveLobbyBtn.addEventListener('click', async () => {
+        showConfirmationModal(
+          'Leave Group?',
+          'Are you sure you want to leave this group?\n\nYou can rejoin later with the group code.',
+          async () => {
             try {
-              const response = await fetch(`/api/groups/${groupId}/delete/`, {
+              const response = await fetch(`/api/groups/${groupId}/leave/`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -672,17 +756,62 @@
               });
               const data = await response.json();
               if (data.success) {
-                alert(data.message);
-                window.location.href = '/profile/';
+                showConfirmationModal('Success', data.message, () => {
+                  window.location.href = '/profile/';
+                });
               } else {
-                alert(data.message || 'Failed to delete group');
+                showConfirmationModal('Error', data.message || 'Failed to leave group', () => {});
               }
             } catch (error) {
-              console.error('Error deleting group:', error);
-              alert('Failed to delete group. Please try again.');
+              console.error('Error leaving group:', error);
+              showConfirmationModal('Error', 'Failed to leave group. Please try again.', () => {});
             }
           }
-        }
+        );
+      });
+    }
+
+    // Delete Group (for creator only)
+    const deleteGroupBtn = document.getElementById('deleteGroupBtn');
+    if (deleteGroupBtn) {
+      deleteGroupBtn.addEventListener('click', async () => {
+        showConfirmationModal(
+          'Delete Group?',
+          `Are you sure you want to DELETE group "${groupCode}"?\n\nThis action cannot be undone.`,
+          () => {
+            // Second confirmation for destructive action
+            showConfirmationModal(
+              'Final Warning',
+              'FINAL WARNING: All group data, matches, and member information will be permanently deleted.\n\nThis action cannot be undone. Continue?',
+              async () => {
+                try {
+                  const response = await fetch(`/api/groups/${groupId}/delete/`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-CSRFToken': getCookie('csrftoken')
+                    }
+                  });
+                  const data = await response.json();
+                  if (data.success) {
+                    showConfirmationModal('Success', data.message, () => {
+                      window.location.href = '/profile/';
+                    });
+                  } else {
+                    showConfirmationModal('Error', data.message || 'Failed to delete group', () => {});
+                  }
+                } catch (error) {
+                  console.error('Error deleting group:', error);
+                  showConfirmationModal('Error', 'Failed to delete group. Please try again.', () => {});
+                }
+              },
+              null,
+              true
+            );
+          },
+          null,
+          true
+        );
       });
     }
 

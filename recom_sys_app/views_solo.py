@@ -194,6 +194,8 @@ def set_solo_genres(request):
 def get_solo_deck(request):
     """
     API endpoint to get movie recommendations for solo mode
+    Uses hybrid approach: collaborative filtering + preference-based recommendations
+
     GET /api/solo/deck/?limit=20
 
     Query Parameters:
@@ -204,7 +206,8 @@ def get_solo_deck(request):
             "success": true,
             "movies": [...],
             "total": 20,
-            "selected_genres": [28, 35, 18]
+            "selected_genres": [28, 35, 18],
+            "recommendation_method": "hybrid" | "preference" | "popular"
         }
     """
     try:
@@ -216,32 +219,116 @@ def get_solo_deck(request):
                 {"success": False, "error": "No genres selected"}, status=400
             )
 
-        # Get limit parameter
+        # Get limit and offset parameters
         try:
-            limit = int(request.GET.get("limit", 20))
-            limit = min(max(limit, 1), 100)  # Clamp between 1-100
+            limit = int(request.GET.get("limit", 50))  # Default to 50 movies
+            limit = min(max(limit, 50), 100)  # Clamp between 50-100 (minimum 50)
         except ValueError:
-            limit = 20
+            limit = 50  # Default to 50 movies
+
+        try:
+            offset = int(request.GET.get("offset", 0))
+            offset = max(offset, 0)  # Ensure non-negative
+        except ValueError:
+            offset = 0
 
         # Get user's region for watch providers
         user_region = get_user_region(request)
 
-        # Get movies from TMDB based on selected genres (with personalized recommendations)
-        movies = _fetch_movies_by_genres(selected_genres, limit, user=request.user)
+        # SIMPLIFIED: Just use genre-based recommendations (no CF, no preference-based)
+        from recom_sys_app.services import RecommendationService
 
-        # Filter out movies the user has already swiped on
+        # Simple genre-based approach
+        recommendation_method = "genre_based"
+
+        # Get movie IDs from genre-based recommendations only
+        # Use offset for pagination to get different movies
+        requested_limit = max(limit, 50)
+
+        movie_ids = RecommendationService.get_solo_deck(
+            request.user,
+            limit=requested_limit * 2,  # Get more to account for filtering and ensure 50+
+            use_collaborative_filtering=False,  # Disable CF for simplicity
+            offset=offset,
+            selected_genre_ids=selected_genres,  # Pass selected genres
+        )
+
+        # Get preference-based movie IDs to mark them (first 2 movies)
+        from recom_sys_app.models import UserPreference
+        preference_movie_ids = set()
+        try:
+            preference = UserPreference.objects.get(user=request.user)
+            if preference.genre_preferences and preference.total_interactions > 0:
+                # Get first 2 preference-based movies from the list
+                from recom_sys_app.services import RecommendationService
+                pref_movies = RecommendationService._generate_solo_recommendations_from_preferences(
+                    request.user, preference, limit=2
+                )
+                preference_movie_ids = set(pref_movies[:2])
+        except UserPreference.DoesNotExist:
+            pass
+
+        # Fetch movie details from TMDB
+        movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])
+
+        # Filter out already-swiped movies
         swiped_ids = set(
             Interaction.objects.filter(user=request.user).values_list(
                 "tmdb_id", flat=True
             )
         )
-        movies = [m for m in movies if m["tmdb_id"] not in swiped_ids]
 
-        # Add watch providers for each movie based on user's region
+        # Filter movies by swiped status and verify genre match (strict filtering)
+        filtered_movies = []
+        selected_genre_set = set(selected_genres)  # Convert to set for faster lookup
+
+        for movie in movies:
+            if movie["tmdb_id"] in swiped_ids:
+                continue
+
+            # Strict genre filtering: movie MUST match at least one selected genre
+            # Get genre IDs from movie (now included in _tmdb_fetch_by_ids response)
+            movie_genre_ids = movie.get("genre_ids", [])
+
+            # Fallback: if genre_ids not available, try to extract from genres array
+            if not movie_genre_ids:
+                movie_genres = movie.get("genres", [])
+                for genre in movie_genres:
+                    if isinstance(genre, dict) and "id" in genre:
+                        movie_genre_ids.append(genre["id"])
+                    elif isinstance(genre, int):
+                        movie_genre_ids.append(genre)
+
+            # Only include movies that match selected genres
+            # Strict filtering: must have genre info and match at least one selected genre
+            if movie_genre_ids and any(
+                gid in selected_genre_set for gid in movie_genre_ids
+            ):
+                filtered_movies.append(movie)
+            # If no genre info, exclude it (service should have filtered, but be strict)
+            elif not movie_genre_ids:
+                print(
+                    f"[Warning] Movie {movie.get('tmdb_id')} has no genre info, excluding from results"
+                )
+
+            if len(filtered_movies) >= limit:
+                break
+
+        movies = filtered_movies[:limit]
+
+        # Add recommendation source/reason and watch providers to each movie
         for movie in movies:
             movie["watch_providers"] = _fetch_watch_providers(
                 movie["tmdb_id"], user_region
             )
+
+            # Mark preference-based movies (first 1-2)
+            if movie["tmdb_id"] in preference_movie_ids:
+                movie["recommendation_reason"] = "Based on your preferences"
+                movie["recommendation_source"] = "preference_based"
+            else:
+                movie["recommendation_reason"] = "Based on selected genres"
+                movie["recommendation_source"] = "genre_based"
 
         return JsonResponse(
             {
@@ -250,10 +337,14 @@ def get_solo_deck(request):
                 "total": len(movies),
                 "selected_genres": selected_genres,
                 "region": user_region,
+                "recommendation_method": recommendation_method,
             }
         )
 
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 
@@ -748,6 +839,11 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
             r.raise_for_status()
             det = r.json()
 
+            # Extract genre IDs and names from TMDB response
+            genre_objects = det.get("genres", [])
+            genre_names = [g.get("name") for g in genre_objects]
+            genre_ids = [g.get("id") for g in genre_objects if g.get("id")]
+
             out.append(
                 {
                     "found": True,
@@ -767,7 +863,8 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
                         if det.get("backdrop_path")
                         else None
                     ),
-                    "genres": [g.get("name") for g in det.get("genres", [])],
+                    "genres": genre_names,  # Keep genre names for display
+                    "genre_ids": genre_ids,  # Add genre IDs for filtering
                     "runtime": det.get("runtime"),
                 }
             )

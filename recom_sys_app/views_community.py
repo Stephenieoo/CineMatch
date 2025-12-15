@@ -237,22 +237,84 @@ def get_community_deck(request, group_code):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Get movie IDs from RecommendationService
-        movie_ids = RecommendationService.get_group_deck(community, limit=50)
+        # Extract genre name and convert to TMDB genre ID
+        genre_name = ""
+        if community.community_key and community.community_key.startswith("genre:"):
+            genre_name = community.community_key.split(":", 1)[1]
+        elif community.genre_filter:
+            genre_name = community.genre_filter
+
+        # Convert genre name to TMDB genre ID for filtering
+        selected_genre_ids = None
+        if genre_name:
+            # Use the same genre mapping as in services
+            genre_name_to_id = {
+                "Action": 28,
+                "Adventure": 12,
+                "Animation": 16,
+                "Comedy": 35,
+                "Crime": 80,
+                "Documentary": 99,
+                "Drama": 18,
+                "Family": 10751,
+                "Fantasy": 14,
+                "History": 36,
+                "Horror": 27,
+                "Music": 10402,
+                "Mystery": 9648,
+                "Romance": 10749,
+                "Science Fiction": 878,
+                "TV Movie": 10770,
+                "Thriller": 53,
+                "War": 10752,
+                "Western": 37,
+            }
+            genre_id = genre_name_to_id.get(genre_name)
+            if genre_id:
+                selected_genre_ids = [genre_id]
+
+        # Get movie IDs from RecommendationService with genre filtering and collaborative filtering
+        from recom_sys_app.services import CollaborativeFilteringService
+        from recom_sys_app.models import Interaction
+
+        # Check if user has enough interactions for CF
+        interaction_count = Interaction.objects.filter(user=request.user).count()
+        use_cf = interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+
+        # Get movie IDs with CF enabled
+        movie_ids = RecommendationService.get_group_deck(
+            community,
+            user=request.user,  # Pass user for CF
+            limit=50,
+            selected_genre_ids=selected_genre_ids,
+            use_collaborative_filtering=use_cf  # Enable CF if user qualifies
+        )
+
+        # Get CF movie IDs to mark them
+        cf_movie_ids = set()
+        if use_cf:
+            try:
+                cf_movie_ids = set(
+                    CollaborativeFilteringService.get_collaborative_recommendations(
+                        request.user, limit=50
+                    )
+                )
+            except Exception:
+                pass  # If CF fails, continue without marking
 
         # Fetch movie details from TMDB
         movies = []
         for tmdb_id in movie_ids[:20]:  # Return first 20 movies
             movie_details = RecommendationService.get_movie_details(tmdb_id)
             if movie_details:
+                # Add recommendation source
+                if tmdb_id in cf_movie_ids:
+                    movie_details["recommendation_reason"] = "Users like you also liked this"
+                    movie_details["recommendation_source"] = "collaborative_filtering"
+                else:
+                    movie_details["recommendation_reason"] = "Based on community preferences"
+                    movie_details["recommendation_source"] = "community_based"
                 movies.append(movie_details)
-
-        # Extract genre name
-        genre_name = ""
-        if community.community_key and community.community_key.startswith("genre:"):
-            genre_name = community.community_key.split(":", 1)[1]
-        elif community.genre_filter:
-            genre_name = community.genre_filter
 
         return Response(
             {
@@ -260,6 +322,7 @@ def get_community_deck(request, group_code):
                 "movies": movies,
                 "total": len(movies),
                 "genre": genre_name,
+                "recommendation_method": "hybrid" if use_cf else "community_based",
             },
             status=status.HTTP_200_OK,
         )
