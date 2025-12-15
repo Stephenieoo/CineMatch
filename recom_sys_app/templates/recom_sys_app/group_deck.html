@@ -1133,30 +1133,44 @@
             const moviesList = currentLikesTab === 'liked' ? likedMovies : watchedLikedMovies;
             
             if (moviesList.length === 0) {
-                alert('No movies to remove.');
+                showConfirmationModal(
+                    'No Movies',
+                    'No movies to remove.',
+                    () => {}
+                );
                 return;
             }
             
-            if (!confirm(`Are you sure you want to remove all ${moviesList.length} movies from "${tabName}"?\n\nThis action cannot be undone.`)) {
-                return;
-            }
-            
-            try {
-                const csrfToken = getCookie('csrftoken');
-                
-                for (const movie of moviesList) {
-                    await fetch(`/api/solo/unlike/${movie.tmdb_id}/`, {
-                        method: 'DELETE',
-                        headers: { 'X-CSRFToken': csrfToken }
-                    });
+            showConfirmationModal(
+                'Remove All Movies?',
+                `Are you sure you want to remove all ${moviesList.length} movies from "${tabName}"?\n\nThis action cannot be undone.`,
+                async () => {
+                    try {
+                        const csrfToken = getCookie('csrftoken');
+                        
+                        for (const movie of moviesList) {
+                            await fetch(`/api/solo/unlike/${movie.tmdb_id}/`, {
+                                method: 'DELETE',
+                                headers: { 'X-CSRFToken': csrfToken }
+                            });
+                        }
+                        
+                        await loadLikedMovies();
+                        showConfirmationModal(
+                            'Success',
+                            `Successfully removed all movies from "${tabName}".`,
+                            () => {}
+                        );
+                    } catch (error) {
+                        console.error('Error removing movies:', error);
+                        showConfirmationModal(
+                            'Error',
+                            'An error occurred while removing movies.',
+                            () => {}
+                        );
+                    }
                 }
-                
-                await loadLikedMovies();
-                alert(`Successfully removed all movies from "${tabName}".`);
-            } catch (error) {
-                console.error('Error removing movies:', error);
-                alert('An error occurred while removing movies.');
-            }
+            );
         }
 
         function updateLikesPanel() {
@@ -1208,20 +1222,24 @@
 
         async function removeLikedMovie(tmdbId, event) {
             event.stopPropagation();
-            if (!confirm('Remove this movie from your likes?')) return;
-            
-            try {
-                const response = await fetch(`/api/solo/unlike/${tmdbId}/`, {
-                    method: 'DELETE',
-                    headers: { 'X-CSRFToken': getCookie('csrftoken') }
-                });
+            showConfirmationModal(
+                'Remove Movie?',
+                'Remove this movie from your likes?',
+                async () => {
+                    try {
+                        const response = await fetch(`/api/solo/unlike/${tmdbId}/`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+                        });
 
-                if (response.ok) {
-                    await loadLikedMovies();
+                        if (response.ok) {
+                            await loadLikedMovies();
+                        }
+                    } catch (error) {
+                        console.error('Error removing movie:', error);
+                    }
                 }
-            } catch (error) {
-                console.error('Error removing movie:', error);
-            }
+            );
         }
 
         // Initialize on page load

@@ -518,9 +518,10 @@ def swipe_like(request, group_code):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Retrieve Movie ID
+        # Retrieve Movie ID and detailed action
         tmdb_id = request.data.get("tmdb_id")
         movie_title = request.data.get("movie_title", "")
+        detailed_action = request.data.get("detailed_action", "LIKE")  # Default to LIKE
 
         if not tmdb_id:
             return Response(
@@ -576,8 +577,18 @@ def swipe_like(request, group_code):
                     status=status.HTTP_201_CREATED,
                 )
 
-        # For PRIVATE groups, use GroupSwipe model (original behavior)
-        # 1 Create or update swipe record
+        # For PRIVATE groups, use GroupSwipe model AND Interaction model for consistency
+        from .models import Interaction
+
+        # Determine interaction status based on detailed_action
+        # WATCHED_LIKED counts as LIKE for group matching but stored as WATCHED_LIKED in Interaction
+        interaction_status = Interaction.Status.LIKE
+        if detailed_action == "WATCHED_LIKED":
+            interaction_status = Interaction.Status.WATCHED_LIKED
+        elif detailed_action == "WATCHED_DISLIKED":
+            interaction_status = Interaction.Status.WATCHED_DISLIKED
+
+        # 1 Create or update swipe record (GroupSwipe for group matching)
         existing_swipe = GroupSwipe.objects.filter(
             group_session=group_session, user=request.user, tmdb_id=tmdb_id
         ).first()
@@ -587,6 +598,32 @@ def swipe_like(request, group_code):
 
         # use transactions to ensure data consistency
         with transaction.atomic():
+            # Store in Interaction model for consistency across all sessions
+            existing_interaction = Interaction.objects.filter(
+                user=request.user, tmdb_id=tmdb_id
+            ).first()
+
+            if existing_interaction:
+                # Update existing interaction
+                existing_interaction.status = interaction_status
+                existing_interaction.source = "group"
+                existing_interaction.save()
+                print(
+                    f"[DEBUG] Updated Interaction to {interaction_status} for movie {tmdb_id}"
+                )
+            else:
+                # Create new interaction
+                Interaction.objects.create(
+                    user=request.user,
+                    tmdb_id=tmdb_id,
+                    status=interaction_status,
+                    source="group",
+                )
+                print(
+                    f"[DEBUG] Created new Interaction {interaction_status} for movie {tmdb_id}"
+                )
+
+            # Handle GroupSwipe for group matching (only LIKE/DISLIKE for matching logic)
             if existing_swipe:
                 # existed: check if need update
                 if existing_swipe.action == GroupSwipe.Action.LIKE:
@@ -613,7 +650,8 @@ def swipe_like(request, group_code):
                     message = "Updated to LIKE"
                     print(f"[DEBUG] Updated swipe to LIKE for movie {tmdb_id}")
             else:
-                # No record exists → create a new LIKE swipe
+                # No record exists → create a new LIKE swipe (for matching purposes)
+                # WATCHED_LIKED also counts as LIKE for group matching
                 swipe = GroupSwipe.objects.create(
                     group_session=group_session,
                     user=request.user,
@@ -808,8 +846,11 @@ def swipe_dislike(request, group_code):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # 获取电影 ID
+        # 获取电影 ID 和详细操作
         tmdb_id = request.data.get("tmdb_id")
+        detailed_action = request.data.get(
+            "detailed_action", "DISLIKE"
+        )  # Default to DISLIKE
 
         if not tmdb_id:
             return Response(
@@ -861,7 +902,14 @@ def swipe_dislike(request, group_code):
                     status=status.HTTP_201_CREATED,
                 )
 
-        # 对于 PRIVATE 群组，使用 GroupSwipe 模型
+        # 对于 PRIVATE 群组，使用 GroupSwipe 模型 AND Interaction 模型以保持一致性
+        from .models import Interaction
+
+        # Determine interaction status based on detailed_action
+        interaction_status = Interaction.Status.DISLIKE
+        if detailed_action == "WATCHED_DISLIKED":
+            interaction_status = Interaction.Status.WATCHED_DISLIKED
+
         # 检查是否已经滑过
         existing_swipe = GroupSwipe.objects.filter(
             group_session=group_session, user=request.user, tmdb_id=tmdb_id
@@ -871,6 +919,32 @@ def swipe_dislike(request, group_code):
         message = None
 
         with transaction.atomic():
+            # Store in Interaction model for consistency across all sessions
+            existing_interaction = Interaction.objects.filter(
+                user=request.user, tmdb_id=tmdb_id
+            ).first()
+
+            if existing_interaction:
+                # Update existing interaction
+                existing_interaction.status = interaction_status
+                existing_interaction.source = "group"
+                existing_interaction.save()
+                print(
+                    f"[DEBUG] Updated Interaction to {interaction_status} for movie {tmdb_id}"
+                )
+            else:
+                # Create new interaction
+                Interaction.objects.create(
+                    user=request.user,
+                    tmdb_id=tmdb_id,
+                    status=interaction_status,
+                    source="group",
+                )
+                print(
+                    f"[DEBUG] Created new Interaction {interaction_status} for movie {tmdb_id}"
+                )
+
+            # Handle GroupSwipe for group matching (only LIKE/DISLIKE for matching logic)
             if existing_swipe:
                 # 如果之前的操作也是 DISLIKE，直接返回成功
                 if existing_swipe.action == GroupSwipe.Action.DISLIKE:
