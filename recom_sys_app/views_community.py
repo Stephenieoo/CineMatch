@@ -279,7 +279,9 @@ def get_community_deck(request, group_code):
 
         # Check if user has enough interactions for CF
         interaction_count = Interaction.objects.filter(user=request.user).count()
-        use_cf = interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+        use_cf = (
+            interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+        )
 
         # Get movie IDs with CF enabled
         movie_ids = RecommendationService.get_group_deck(
@@ -287,7 +289,7 @@ def get_community_deck(request, group_code):
             user=request.user,  # Pass user for CF
             limit=50,
             selected_genre_ids=selected_genre_ids,
-            use_collaborative_filtering=use_cf  # Enable CF if user qualifies
+            use_collaborative_filtering=use_cf,  # Enable CF if user qualifies
         )
 
         # Get CF movie IDs to mark them
@@ -309,10 +311,14 @@ def get_community_deck(request, group_code):
             if movie_details:
                 # Add recommendation source
                 if tmdb_id in cf_movie_ids:
-                    movie_details["recommendation_reason"] = "Users like you also liked this"
+                    movie_details["recommendation_reason"] = (
+                        "Users like you also liked this"
+                    )
                     movie_details["recommendation_source"] = "collaborative_filtering"
                 else:
-                    movie_details["recommendation_reason"] = "Based on community preferences"
+                    movie_details["recommendation_reason"] = (
+                        "Based on community preferences"
+                    )
                     movie_details["recommendation_source"] = "community_based"
                 movies.append(movie_details)
 
