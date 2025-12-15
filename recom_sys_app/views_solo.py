@@ -247,26 +247,20 @@ def get_solo_deck(request):
 
         movie_ids = RecommendationService.get_solo_deck(
             request.user,
-            limit=requested_limit * 2,  # Get more to account for filtering and ensure 50+
+            limit=requested_limit
+            * 2,  # Get more to account for filtering and ensure 50+
             use_collaborative_filtering=False,  # Disable CF for simplicity
             offset=offset,
             selected_genre_ids=selected_genres,  # Pass selected genres
         )
 
-        # Get preference-based movie IDs to mark them (first 2 movies)
-        from recom_sys_app.models import UserPreference
-        preference_movie_ids = set()
-        try:
-            preference = UserPreference.objects.get(user=request.user)
-            if preference.genre_preferences and preference.total_interactions > 0:
-                # Get first 2 preference-based movies from the list
-                from recom_sys_app.services import RecommendationService
-                pref_movies = RecommendationService._generate_solo_recommendations_from_preferences(
-                    request.user, preference, limit=2
-                )
-                preference_movie_ids = set(pref_movies[:2])
-        except UserPreference.DoesNotExist:
-            pass
+        # Get preference-based movie IDs from cache (stored by RecommendationService)
+        from django.core.cache import cache
+
+        cache_key = (
+            f"solo_pref_ids_{request.user.id}_{'_'.join(map(str, selected_genres))}"
+        )
+        preference_movie_ids = cache.get(cache_key, set())
 
         # Fetch movie details from TMDB
         movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])

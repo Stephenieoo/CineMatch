@@ -2,7 +2,6 @@
 import csv
 import io
 import requests
-from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -43,7 +42,9 @@ def upload_letterboxd_csv(request):
         decoded_file = csv_file.read().decode("utf-8")
         csv_reader = csv.DictReader(io.StringIO(decoded_file))
 
-        print(f"[DEBUG] Starting Letterboxd CSV import for user: {request.user.username}")
+        print(
+            f"[DEBUG] Starting Letterboxd CSV import for user: {request.user.username}"
+        )
 
         stats = {
             "total": 0,
@@ -55,9 +56,7 @@ def upload_letterboxd_csv(request):
         # Get TMDB API credentials
         tmdb_token = os.getenv("TMDB_TOKEN") or os.getenv("TMDB_API_KEY")
         if not tmdb_token:
-            return JsonResponse(
-                {"error": "TMDB API not configured"}, status=500
-            )
+            return JsonResponse({"error": "TMDB API not configured"}, status=500)
 
         headers = {
             "Authorization": f"Bearer {tmdb_token}",
@@ -93,7 +92,9 @@ def upload_letterboxd_csv(request):
                     ]:
                         existing.status = Interaction.Status.WATCHED_LIKED
                         existing.save()
-                        print(f"[DEBUG] Updated existing interaction for {tmdb_id} to WATCHED_LIKED")
+                        print(
+                            f"[DEBUG] Updated existing interaction for {tmdb_id} to WATCHED_LIKED"
+                        )
                         stats["imported"] += 1
                     else:
                         print(f"[DEBUG] Already watched: {tmdb_id}")
@@ -106,12 +107,26 @@ def upload_letterboxd_csv(request):
                         status=Interaction.Status.WATCHED_LIKED,
                         source="letterboxd_import",
                     )
-                    print(f"[DEBUG] Created new interaction for {tmdb_id}: {interaction.id}")
+                    print(
+                        f"[DEBUG] Created new interaction for {tmdb_id}: {interaction.id}"
+                    )
                     stats["imported"] += 1
             else:
                 stats["not_found"] += 1
 
         print(f"[DEBUG] Import complete: {stats}")
+
+        # Force preference update after import to ensure recommendations reflect new data
+        if stats["imported"] > 0:
+            try:
+                from .services import PreferenceService
+
+                PreferenceService.update_user_preferences(
+                    request.user, force_recalculate=True
+                )
+                print(f"[DEBUG] Updated preferences for user: {request.user.username}")
+            except Exception as e:
+                print(f"[DEBUG] Error updating preferences: {e}")
 
         return JsonResponse(
             {

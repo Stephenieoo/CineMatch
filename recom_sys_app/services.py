@@ -30,7 +30,12 @@ class RecommendationService:
 
     @classmethod
     def get_group_deck(
-        cls, group_session, user=None, limit=50, selected_genre_ids=None, use_collaborative_filtering=False
+        cls,
+        group_session,
+        user=None,
+        limit=50,
+        selected_genre_ids=None,
+        use_collaborative_filtering=False,
     ):
         """
         为群组生成个性化电影推荐列表
@@ -48,7 +53,9 @@ class RecommendationService:
         if user:
             cache_key = f"group_deck_{group_session.id}_user_{user.id}_cf_{use_collaborative_filtering}"
         else:
-            cache_key = f"group_deck_{group_session.id}_cf_{use_collaborative_filtering}"
+            cache_key = (
+                f"group_deck_{group_session.id}_cf_{use_collaborative_filtering}"
+            )
 
         cached_deck = cache.get(cache_key)
         if cached_deck:
@@ -79,16 +86,21 @@ class RecommendationService:
                 from .models import Interaction
 
                 interaction_count = Interaction.objects.filter(user=user).count()
-                if interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF:
+                if (
+                    interaction_count
+                    >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+                ):
                     # Get CF recommendations
-                    cf_movies = CollaborativeFilteringService.get_collaborative_recommendations(
-                        user, limit=limit
+                    cf_movies = (
+                        CollaborativeFilteringService.get_collaborative_recommendations(
+                            user, limit=limit
+                        )
                     )
                     # Add CF movies to the list (prioritize them)
                     existing_ids = set(movie_ids)
                     cf_filtered = [mid for mid in cf_movies if mid not in existing_ids]
                     # Add CF movies at the beginning (higher priority)
-                    movie_ids = cf_filtered[:limit // 2] + movie_ids
+                    movie_ids = cf_filtered[: limit // 2] + movie_ids
             except Exception as e:
                 print(f"Collaborative filtering failed in group deck: {e}")
                 # Continue with group-based recommendations only
@@ -217,6 +229,7 @@ class RecommendationService:
         )
 
         # Filter by selected genres if provided
+        preference_based_ids = set()  # Track which movies are preference-based
         if selected_genre_ids:
             # SIMPLIFIED: Prioritize genre-based movies, but add 1-2 preference-based
             # Fetch many movies from selected genres (simple and direct)
@@ -230,31 +243,59 @@ class RecommendationService:
                 selected_genre_ids, limit=fetch_limit, randomize=True
             )
             # Remove already-swiped movies
-            filtered_movies = [
+            genre_filtered = [
                 mid for mid in genre_based_movies if mid not in swiped_ids
             ]
 
             # Add 1-2 preference-based movies if user has preferences
+            pref_movies_list = []
             try:
                 from .models import UserPreference
+
                 preference = UserPreference.objects.get(user=user)
                 if preference.genre_preferences and preference.total_interactions > 0:
                     # Get 2-3 preference-based movies
                     pref_movies = cls._generate_solo_recommendations_from_preferences(
                         user, preference, limit=3
                     )
-                    # Filter out swiped and add to beginning (higher priority)
-                    pref_filtered = [
-                        mid for mid in pref_movies
-                        if mid not in swiped_ids and mid not in filtered_movies
-                    ]
-                    # Add 1-2 preference movies at the beginning
-                    filtered_movies = pref_filtered[:2] + filtered_movies
+                    # Filter out swiped and ensure they match selected genres
+                    pref_filtered = []
+                    for mid in pref_movies:
+                        if mid not in swiped_ids and mid not in genre_filtered:
+                            # Verify movie matches selected genres
+                            movie_details = cls.get_movie_details(mid)
+                            if movie_details:
+                                movie_genres = movie_details.get("genres", [])
+                                # Convert genre names to IDs for comparison
+                                movie_genre_ids = cls._get_genre_ids_by_names(
+                                    movie_genres
+                                )
+                                # Only include if matches at least one selected genre
+                                if any(
+                                    gid in selected_genre_ids for gid in movie_genre_ids
+                                ):
+                                    pref_filtered.append(mid)
+                    # Track preference-based movie IDs (first 1-2)
+                    pref_movies_list = pref_filtered[:2]
+                    preference_based_ids = set(pref_movies_list)
             except UserPreference.DoesNotExist:
                 pass  # No preferences, skip
 
+            # Combine: preference-based first, then genre-based
+            filtered_movies = pref_movies_list + genre_filtered
+
             # Ensure we have at least 50 movies
-            filtered_movies = filtered_movies[: max(limit, min(50, len(filtered_movies)))]
+            filtered_movies = filtered_movies[
+                : max(limit, min(50, len(filtered_movies)))
+            ]
+
+            # Store preference-based IDs in cache for the view to retrieve
+            if preference_based_ids:
+                cache.set(
+                    f"solo_pref_ids_{user.id}_{'_'.join(map(str, selected_genre_ids))}",
+                    preference_based_ids,
+                    cls.CACHE_TIMEOUT,
+                )
         else:
             # No genre filtering - use simple approach: just remove swiped movies
             # If no genres selected, fall back to popular movies (simple)
@@ -265,10 +306,19 @@ class RecommendationService:
 
             filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
 
-        # Add randomization for variety (shuffle to avoid same order every time)
+        # Add randomization for variety (shuffle only genre-based movies, keep preference-based at start)
         import random
 
-        if len(filtered_movies) > limit:
+        if len(filtered_movies) > limit and preference_based_ids:
+            # Shuffle only the genre-based portion (after preference-based movies)
+            pref_count = len([m for m in filtered_movies if m in preference_based_ids])
+            if pref_count > 0:
+                genre_portion = filtered_movies[pref_count:]
+                random.shuffle(genre_portion)
+                filtered_movies = filtered_movies[:pref_count] + genre_portion
+            else:
+                random.shuffle(filtered_movies)
+        elif len(filtered_movies) > limit:
             random.shuffle(filtered_movies)
 
         # If we have cached deck, merge with new movies (for pagination)
@@ -559,7 +609,13 @@ class RecommendationService:
         try:
             # Niche genres that typically have fewer movies in TMDB
             # These need lower vote_count thresholds or no threshold at all
-            niche_genre_ids = {10770, 10402, 37, 10752, 10751}  # TV Movie, Music, Western, War, Family
+            niche_genre_ids = {
+                10770,
+                10402,
+                37,
+                10752,
+                10751,
+            }  # TV Movie, Music, Western, War, Family
             is_niche_genre = any(gid in niche_genre_ids for gid in genre_ids)
 
             # 构建类型筛选参数 - pipe-separated means OR logic (movies matching ANY genre)
