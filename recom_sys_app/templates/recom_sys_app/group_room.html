@@ -314,8 +314,8 @@
             
             deckElement.innerHTML = `
                 <div class="movie-card">
-                    <h2>Movie ${index + 1}</h2>
-                    <div class="movie-id">TMDB ID: ${movie.tmdb_id || 680 + index}</div>
+                    <h2>${movie.title || 'Movie ' + (index + 1)}</h2>
+                    <div class="movie-id">TMDB ID: ${movie.tmdb_id || 'Unknown'}</div>
                     <p>Swipe to make your choice!</p>
                     
                     <div class="swipe-buttons">

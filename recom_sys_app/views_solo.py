@@ -510,18 +510,30 @@ def get_watched(request):
         }
     """
     try:
-        # Get all watched interactions for this user
+        # Get all watched interactions for this user (including watched_liked and watched_disliked)
         watched_interactions = Interaction.objects.filter(
-            user=request.user, status="WATCHED"
+            user=request.user,
+            status__in=["WATCHED", "WATCHED_LIKED", "WATCHED_DISLIKED"],
         ).order_by("-updated_at")[
             :100
         ]  # Get last 100 watched
 
+        # Build a map of tmdb_id to status
+        status_map = {}
+        for interaction in watched_interactions:
+            status_map[interaction.tmdb_id] = interaction.status
+
         # Get unique tmdb_ids
-        tmdb_ids = list(set(watched_interactions.values_list("tmdb_id", flat=True)))
+        tmdb_ids = list(status_map.keys())
 
         # Fetch details from TMDB
         movies = _tmdb_fetch_by_ids(tmdb_ids)
+
+        # Add status to each movie
+        for movie in movies:
+            tmdb_id = movie.get("tmdb_id")
+            if tmdb_id in status_map:
+                movie["status"] = status_map[tmdb_id]
 
         return JsonResponse({"success": True, "movies": movies, "total": len(movies)})
 
@@ -776,3 +788,11 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
             continue
 
     return out
+
+
+@login_required
+def watched_movies_page(request):
+    """
+    Render the watched movies page
+    """
+    return render(request, "recom_sys_app/watched_movies.html")

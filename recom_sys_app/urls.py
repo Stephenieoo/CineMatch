@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
 from . import views_solo
 from . import views_community
+from . import views_letterboxd
 
 # Import views
 from .views import (
@@ -78,6 +79,7 @@ urlpatterns = [
     # ==================== PROFILE & RECOMMENDATIONS ====================
     path("profile/", profile_view, name="profile"),
     path("profile/edit/", edit_profile_view, name="edit_profile"),
+    path("profile/watched/", views_solo.watched_movies_page, name="watched_movies"),
     path("communities/", communities_view, name="communities"),
     path("recommend/", recommend_view, name="recommend"),
     # ==================== INTERACTIONS ====================
@@ -180,6 +182,12 @@ urlpatterns = [
     # Region/Geolocation API Endpoints
     path("api/region/", get_user_region_api, name="get_user_region"),
     path("api/region/set/", set_user_region_api, name="set_user_region"),
+    # Letterboxd Import
+    path(
+        "api/letterboxd/upload/",
+        views_letterboxd.upload_letterboxd_csv,
+        name="upload_letterboxd",
+    ),
     path(
         "api/communities/<str:group_code>/deck/",
         views_community.get_community_deck,
