@@ -699,7 +699,7 @@
                 if (data.success) {
                     movies = data.movies;
                     currentIndex = 0;
-                    renderCards();
+                    await renderCards();
                     updateCardsRemaining();
                 } else {
                     showError('Failed to load movies');
@@ -786,9 +786,14 @@
             }
         }
 
-        function renderCards() {
+        async function renderCards() {
             const container = document.getElementById('card-container');
             container.innerHTML = '';
+
+            // Load more movies if running low (less than 5 remaining)
+            if (currentIndex >= movies.length - 5 && movies.length > 0) {
+                await loadMoreMovies();
+            }
 
             // Render next 3 cards (for stacking effect)
             for (let i = 0; i < Math.min(3, movies.length - currentIndex); i++) {
@@ -799,6 +804,24 @@
 
             if (currentIndex >= movies.length) {
                 showNoMoreCards();
+            }
+        }
+
+        async function loadMoreMovies() {
+            try {
+                const offset = movies.length;
+                const response = await fetch(`/api/solo/deck/?limit=50&offset=${offset}`);
+                const data = await response.json();
+
+                if (data.success && data.movies && data.movies.length > 0) {
+                    // Add new movies, avoiding duplicates
+                    const existingIds = new Set(movies.map(m => m.tmdb_id));
+                    const newMovies = data.movies.filter(m => !existingIds.has(m.tmdb_id));
+                    movies = movies.concat(newMovies);
+                    console.log(`Loaded ${newMovies.length} more movies. Total: ${movies.length}`);
+                }
+            } catch (error) {
+                console.error('Error loading more movies:', error);
             }
         }
 
@@ -987,9 +1010,9 @@
 
             card.style.opacity = '0';
 
-            setTimeout(() => {
+            setTimeout(async () => {
                 currentIndex++;
-                renderCards();
+                await renderCards();
                 updateCardsRemaining();
             }, 500);
         }

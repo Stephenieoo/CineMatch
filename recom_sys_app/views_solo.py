@@ -219,12 +219,18 @@ def get_solo_deck(request):
                 {"success": False, "error": "No genres selected"}, status=400
             )
 
-        # Get limit parameter
+        # Get limit and offset parameters
         try:
             limit = int(request.GET.get("limit", 20))
             limit = min(max(limit, 1), 100)  # Clamp between 1-100
         except ValueError:
             limit = 20
+        
+        try:
+            offset = int(request.GET.get("offset", 0))
+            offset = max(offset, 0)  # Ensure non-negative
+        except ValueError:
+            offset = 0
 
         # Get user's region for watch providers
         user_region = get_user_region(request)
@@ -243,6 +249,7 @@ def get_solo_deck(request):
         )
 
         # Get movie IDs from hybrid recommendations (respects user preferences + CF)
+        # Use offset for pagination to get different movies
         if use_cf:
             recommendation_method = "hybrid"
             # Get hybrid recommendations (CF + preference-based)
@@ -250,6 +257,7 @@ def get_solo_deck(request):
                 request.user,
                 limit=limit * 3,  # Get more to account for genre filtering
                 use_collaborative_filtering=True,
+                offset=offset,
             )
             # Get CF-only recommendations to identify which movies came from CF
             cf_movie_ids = set(
@@ -261,7 +269,10 @@ def get_solo_deck(request):
             recommendation_method = "preference"
             # Use preference-based recommendations
             movie_ids = RecommendationService.get_solo_deck(
-                request.user, limit=limit * 3, use_collaborative_filtering=False
+                request.user, 
+                limit=limit * 3, 
+                use_collaborative_filtering=False,
+                offset=offset,
             )
             cf_movie_ids = set()
 

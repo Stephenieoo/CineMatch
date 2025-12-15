@@ -24,6 +24,7 @@ mdurl==0.1.2
 phidata==2.7.10
 psycopg==3.2.10
 psycopg-binary==3.2.10
+psycopg2-binary>=2.9.0  # For Django database operations and database creation script
 pydantic==2.12.0
 pydantic-settings==2.11.0
 pydantic_core==2.41.1

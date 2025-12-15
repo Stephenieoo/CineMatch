@@ -129,27 +129,38 @@ class RecommendationService:
         return filtered_movies[:limit]
 
     @classmethod
-    def get_solo_deck(cls, user, limit=50, use_collaborative_filtering=True):
+    def get_solo_deck(cls, user, limit=50, use_collaborative_filtering=True, offset=0):
         """
         Generate personalized movie recommendations for solo mode.
         Uses hybrid approach: collaborative filtering + preference-based recommendations.
+        Supports pagination via offset for variety.
 
         Args:
             user: User instance
             limit: Number of movies to return
             use_collaborative_filtering: Whether to use collaborative filtering (default: True)
+            offset: Offset for pagination (default: 0)
 
         Returns:
             list: Movie tmdb_id list
         """
-        # Check cache
+        # Check cache (but use offset to get different movies)
         cache_key = f"solo_deck_{user.id}_{use_collaborative_filtering}"
         cached_deck = cache.get(cache_key)
-        if cached_deck:
+        if cached_deck and offset == 0:
+            # Return from cache only if no offset (first page)
             return cached_deck[:limit]
+        elif cached_deck and offset > 0:
+            # Return next batch from cache if available
+            if offset < len(cached_deck):
+                return cached_deck[offset:offset + limit]
+            # If cache exhausted, generate more (will be added to cache below)
 
         # Get user's interaction count to determine best approach
         interaction_count = Interaction.objects.filter(user=user).count()
+
+        # Generate more movies for pagination (3x limit to support multiple pages)
+        generation_limit = max(limit * 3, 150)  # At least 150 movies for variety
 
         # Use hybrid approach if CF is enabled and user has enough interactions
         if (
@@ -161,14 +172,14 @@ class RecommendationService:
                 # Try hybrid recommendations (collaborative + preference-based)
                 movie_ids = CollaborativeFilteringService.get_hybrid_recommendations(
                     user,
-                    limit=limit * 2,
+                    limit=generation_limit,
                     cf_weight=0.4,  # 40% collaborative filtering
                     preference_weight=0.4,  # 40% preference-based
                     popular_weight=0.2,  # 20% popular movies fallback
                 )
 
                 # If hybrid didn't return enough, supplement with preference-based
-                if len(movie_ids) < limit:
+                if len(movie_ids) < generation_limit:
                     from .models import UserPreference
 
                     try:
@@ -179,13 +190,13 @@ class RecommendationService:
                         ):
                             pref_movies = (
                                 cls._generate_solo_recommendations_from_preferences(
-                                    user, preference, limit * 2
+                                    user, preference, generation_limit
                                 )
                             )
                             # Add unique movies from preference-based
                             existing_ids = set(movie_ids)
                             for tmdb_id in pref_movies:
-                                if tmdb_id not in existing_ids:
+                                if tmdb_id not in existing_ids and len(movie_ids) < generation_limit * 2:
                                     movie_ids.append(tmdb_id)
                     except UserPreference.DoesNotExist:
                         pass
@@ -196,7 +207,7 @@ class RecommendationService:
                     f"Collaborative filtering failed: {e}, falling back to preference-based"
                 )
                 movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
-                    user, limit * 2
+                    user, generation_limit
                 )
         else:
             # Use preference-based recommendations (original approach)
@@ -207,19 +218,19 @@ class RecommendationService:
                 if preference.genre_preferences and preference.total_interactions > 0:
                     # Use preference-based recommendations
                     movie_ids = cls._generate_solo_recommendations_from_preferences(
-                        user, preference, limit * 2
+                        user, preference, generation_limit
                     )
                 else:
                     # Fallback to history-based
                     movie_ids = (
                         cls._generate_solo_recommendations_from_history_or_profile(
-                            user, limit * 2
+                            user, generation_limit
                         )
                     )
             except UserPreference.DoesNotExist:
                 # No preferences yet, use history/profile
                 movie_ids = cls._generate_solo_recommendations_from_history_or_profile(
-                    user, limit * 2
+                    user, generation_limit
                 )
 
         # Filter out already-swiped movies
@@ -230,10 +241,29 @@ class RecommendationService:
         # Remove already-swiped movies
         filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
 
-        # Cache results
-        cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
+        # Add randomization for variety (shuffle to avoid same order every time)
+        import random
+        if len(filtered_movies) > limit:
+            random.shuffle(filtered_movies)
 
-        return filtered_movies[:limit]
+        # If we have cached deck, merge with new movies (for pagination)
+        if cached_deck and offset > 0:
+            # Merge cached and new movies, avoiding duplicates
+            existing_ids = set(cached_deck)
+            new_movies = [mid for mid in filtered_movies if mid not in existing_ids]
+            filtered_movies = cached_deck + new_movies
+            # Update cache with merged list
+            cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
+            # Return the requested slice
+            if offset < len(filtered_movies):
+                return filtered_movies[offset:offset + limit]
+            else:
+                # Offset beyond available, return empty
+                return []
+        else:
+            # Cache results (cache more than limit for pagination - store 3x limit)
+            cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
+            return filtered_movies[:limit]
 
     @classmethod
     def _generate_solo_recommendations_from_preferences(
@@ -490,71 +520,118 @@ class RecommendationService:
         return genre_ids
 
     @classmethod
-    def _get_movies_by_genres(cls, genre_ids, limit=100):
+    def _get_movies_by_genres(cls, genre_ids, limit=100, randomize=True):
         """
         从 TMDB 获取指定类型的高评分电影
+        Fetches from multiple pages and randomizes for variety
         """
+        import random
+        
         try:
             # 构建类型筛选参数
             genre_str = "|".join(map(str, genre_ids))
 
-            params = {
-                "with_genres": genre_str,
-                "sort_by": "vote_average.desc",
-                "vote_count.gte": 100,  # 至少100个投票
-                "page": 1,
-            }
+            all_movie_ids = []
+            pages_to_fetch = min(5, (limit // 20) + 2)  # Fetch more pages for variety
+            
+            # Try different sort orders for variety
+            sort_options = [
+                "vote_average.desc",  # Highest rated
+                "popularity.desc",    # Most popular
+                "release_date.desc",  # Newest
+            ]
+            
+            for sort_by in sort_options[:2]:  # Use 2 different sort orders
+                for page in range(1, pages_to_fetch + 1):
+                    params = {
+                        "with_genres": genre_str,
+                        "sort_by": sort_by,
+                        "vote_count.gte": 100,  # 至少100个投票
+                        "page": page,
+                    }
 
-            response = requests.get(
-                f"{cls.TMDB_BASE_URL}/discover/movie",
-                params=params,
-                headers=cls.TMDB_HEADERS,
-                timeout=10,
-            )
-            response.raise_for_status()
+                    try:
+                        response = requests.get(
+                            f"{cls.TMDB_BASE_URL}/discover/movie",
+                            params=params,
+                            headers=cls.TMDB_HEADERS,
+                            timeout=10,
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        page_movies = [movie["id"] for movie in data.get("results", [])]
+                        all_movie_ids.extend(page_movies)
+                        
+                        # Stop if we have enough or no more pages
+                        if len(all_movie_ids) >= limit * 2 or page >= data.get("total_pages", 1):
+                            break
+                    except Exception:
+                        continue  # Skip failed pages
 
-            data = response.json()
-            movie_ids = [movie["id"] for movie in data.get("results", [])]
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_movies = []
+            for movie_id in all_movie_ids:
+                if movie_id not in seen:
+                    seen.add(movie_id)
+                    unique_movies.append(movie_id)
 
-            # 如果第一页不够，获取第二页
-            if len(movie_ids) < limit and data.get("total_pages", 0) > 1:
-                params["page"] = 2
-                response = requests.get(
-                    f"{cls.TMDB_BASE_URL}/discover/movie",
-                    params=params,
-                    headers=cls.TMDB_HEADERS,
-                    timeout=10,
-                )
-                response.raise_for_status()
-                data = response.json()
-                movie_ids.extend([movie["id"] for movie in data.get("results", [])])
+            # Randomize for variety if requested
+            if randomize and len(unique_movies) > limit:
+                random.shuffle(unique_movies)
 
-            return movie_ids[:limit]
+            return unique_movies[:limit]
 
         except Exception as e:
             print(f"Error fetching movies by genres: {e}")
-            return cls._get_popular_movies(limit)
+            return cls._get_popular_movies(limit, randomize=randomize)
 
     @classmethod
-    def _get_popular_movies(cls, limit=50):
+    def _get_popular_movies(cls, limit=50, randomize=True):
         """
         获取热门电影作为后备方案
+        Fetches from multiple pages and randomizes for variety
         """
+        import random
+        
         try:
-            params = {"page": 1}
+            all_movie_ids = []
+            pages_to_fetch = min(5, (limit // 20) + 2)  # Fetch more pages for variety
 
-            response = requests.get(
-                f"{cls.TMDB_BASE_URL}/movie/popular",
-                params=params,
-                headers=cls.TMDB_HEADERS,
-                timeout=10,
-            )
-            response.raise_for_status()
+            for page in range(1, pages_to_fetch + 1):
+                params = {"page": page}
 
-            data = response.json()
-            movie_ids = [movie["id"] for movie in data.get("results", [])]
+                try:
+                    response = requests.get(
+                        f"{cls.TMDB_BASE_URL}/movie/popular",
+                        params=params,
+                        headers=cls.TMDB_HEADERS,
+                        timeout=10,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    page_movies = [movie["id"] for movie in data.get("results", [])]
+                    all_movie_ids.extend(page_movies)
+                    
+                    # Stop if we have enough or no more pages
+                    if len(all_movie_ids) >= limit * 2 or page >= data.get("total_pages", 1):
+                        break
+                except Exception:
+                    continue  # Skip failed pages
 
-            return movie_ids[:limit]
+            # Remove duplicates
+            seen = set()
+            unique_movies = []
+            for movie_id in all_movie_ids:
+                if movie_id not in seen:
+                    seen.add(movie_id)
+                    unique_movies.append(movie_id)
+
+            # Randomize for variety if requested
+            if randomize and len(unique_movies) > limit:
+                random.shuffle(unique_movies)
+
+            return unique_movies[:limit]
 
         except Exception as e:
             print(f"Error fetching popular movies: {e}")
