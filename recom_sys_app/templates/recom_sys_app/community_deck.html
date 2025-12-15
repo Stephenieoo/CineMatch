@@ -1567,7 +1567,8 @@
                 ${movieInfoHtml}
             `;
 
-            if (index === currentIndex) {
+            // Only add drag events and click handlers if not a placeholder
+            if (index === currentIndex && !isPlaceholder) {
                 addDragEvents(card);
                 // Add click handler for showing details (only fires if not dragging)
                 card.addEventListener('click', (e) => {
@@ -1575,6 +1576,30 @@
                         openMovieDetails(movie.tmdb_id);
                     }
                     wasDragging = false;
+                });
+            }
+            
+            // Handle image load errors - mark as placeholder and hide movie info
+            const img = card.querySelector('.card-image');
+            if (img) {
+                img.addEventListener('error', function() {
+                    if (!this.dataset.isPlaceholder) {
+                        this.src = `https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}`;
+                        this.dataset.isPlaceholder = 'true';
+                        // Hide movie info if it exists
+                        const movieInfo = card.querySelector('.p-6');
+                        if (movieInfo) {
+                            movieInfo.style.display = 'none';
+                        }
+                        // Hide overlays
+                        const overlays = card.querySelectorAll('.overlay');
+                        overlays.forEach(overlay => overlay.style.display = 'none');
+                        // Hide info button
+                        const infoBtn = card.querySelector('.info-button');
+                        if (infoBtn) {
+                            infoBtn.style.display = 'none';
+                        }
+                    }
                 });
             }
 
