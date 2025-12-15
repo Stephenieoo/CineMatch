@@ -1032,6 +1032,7 @@
         const GROUP_CODE = '{{ group_code }}';
         const CURRENT_USER = '{{ user.username }}';
         const IS_COMMUNITY = {{ is_community|yesno:"true,false" }};
+        const GENRE_NAME = '{{ genre_name|default:"" }}';
         let MOVIES = [];
         let currentIndex = 0;
         let isAnimating = false;
@@ -1543,7 +1544,7 @@
 
             card.innerHTML = `
                 <button class="info-button" onclick="event.stopPropagation(); openMovieDetails(${movie.tmdb_id})" title="View Details">ℹ️</button>
-                <img src="${posterUrl || 'https://via.placeholder.com/400x600?text=No+Poster'}" alt="${escapeHtml(movie.title)}" class="card-image" draggable="false">
+                <img src="${posterUrl || `https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}`}" alt="${escapeHtml(movie.title)}" class="card-image" draggable="false" onerror="this.src='https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}'">
                 <div class="overlay like">LIKE</div>
                 <div class="overlay dislike">PASS</div>
                 <div class="p-6" style="color: white; cursor: pointer;">
@@ -1878,7 +1879,7 @@
                     : '';
 
             modalBody.innerHTML = `
-                    <img src="${movie.poster_url || 'https://via.placeholder.com/600x900?text=No+Poster'}"
+                    <img src="${movie.poster_url || `https://via.placeholder.com/600x900?text=${encodeURIComponent(GENRE_NAME || 'Movie')}`}"
                          alt="${movie.title}"
                          class="modal-poster">
 
