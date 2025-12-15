@@ -26,7 +26,7 @@ def update_preferences_on_interaction_save(sender, instance, created, **kwargs):
     """
     if PreferenceService is None or CollaborativeFilteringService is None:
         return  # Services not available yet (e.g., during migrations)
-    
+
     if created or kwargs.get("update_fields"):
         # Schedule preference update after transaction commits
         transaction.on_commit(
@@ -46,7 +46,7 @@ def update_preferences_on_interaction_delete(sender, instance, **kwargs):
     """
     if PreferenceService is None or CollaborativeFilteringService is None:
         return  # Services not available yet (e.g., during migrations)
-    
+
     transaction.on_commit(
         lambda: PreferenceService.update_user_preferences(instance.user)
     )
