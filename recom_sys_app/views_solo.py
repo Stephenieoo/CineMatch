@@ -253,6 +253,21 @@ def get_solo_deck(request):
             selected_genre_ids=selected_genres,  # Pass selected genres
         )
 
+        # Get preference-based movie IDs to mark them (first 2 movies)
+        from recom_sys_app.models import UserPreference
+        preference_movie_ids = set()
+        try:
+            preference = UserPreference.objects.get(user=request.user)
+            if preference.genre_preferences and preference.total_interactions > 0:
+                # Get first 2 preference-based movies from the list
+                from recom_sys_app.services import RecommendationService
+                pref_movies = RecommendationService._generate_solo_recommendations_from_preferences(
+                    request.user, preference, limit=2
+                )
+                preference_movie_ids = set(pref_movies[:2])
+        except UserPreference.DoesNotExist:
+            pass
+
         # Fetch movie details from TMDB
         movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])
 
@@ -307,9 +322,13 @@ def get_solo_deck(request):
                 movie["tmdb_id"], user_region
             )
 
-            # Simplified: All movies are genre-based
-            movie["recommendation_reason"] = "Based on selected genres"
-            movie["recommendation_source"] = "genre_based"
+            # Mark preference-based movies (first 1-2)
+            if movie["tmdb_id"] in preference_movie_ids:
+                movie["recommendation_reason"] = "Based on your preferences"
+                movie["recommendation_source"] = "preference_based"
+            else:
+                movie["recommendation_reason"] = "Based on selected genres"
+                movie["recommendation_source"] = "genre_based"
 
         return JsonResponse(
             {
