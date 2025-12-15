@@ -173,6 +173,12 @@ class RecommendationService:
             )
             filtered_movies = [mid for mid in combined_ids if mid not in swiped_ids]
 
+        # Add randomization for variety (shuffle to avoid same order every time)
+        import random
+
+        if len(filtered_movies) > limit:
+            random.shuffle(filtered_movies)
+
         # 缓存结果
         cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
 
@@ -910,22 +916,29 @@ class RecommendationService:
     def invalidate_deck_cache(cls, group_session):
         """
         清除群组推荐缓存（当有新的 swipe 或成员变化时调用）
-        现在需要清除所有用户的个性化缓存
+        现在需要清除所有用户的个性化缓存，包括所有 CF 变体
         """
         # 清除旧的群组级别缓存（向后兼容）
         cache_key = f"group_deck_{group_session.id}"
         cache.delete(cache_key)
 
-        # 清除所有活跃成员的用户级别缓存
+        # 清除所有活跃成员的用户级别缓存（包括所有 CF 变体）
         active_members = GroupMember.objects.filter(
             group_session=group_session, is_active=True
         ).select_related("user")
 
         for member in active_members:
-            user_cache_key = f"group_deck_{group_session.id}_user_{member.user.id}"
-            cache.delete(user_cache_key)
+            # Clear cache for both CF=True and CF=False variants
+            for use_cf in [True, False]:
+                user_cache_key = (
+                    f"group_deck_{group_session.id}_user_{member.user.id}_cf_{use_cf}"
+                )
+                cache.delete(user_cache_key)
+            # Also clear old format (without _cf_ suffix) for backward compatibility
+            user_cache_key_old = f"group_deck_{group_session.id}_user_{member.user.id}"
+            cache.delete(user_cache_key_old)
             print(
-                f"[DEBUG] Cleared cache for user {member.user.username}: {user_cache_key}"
+                f"[DEBUG] Cleared cache for user {member.user.username} (all variants)"
             )
 
     @classmethod
@@ -1114,14 +1127,16 @@ class RecommendationService:
 
         finished_members = 0
 
-        # 检查每个成员
+        # 检查每个成员（包括当前用户）
         for member in active_members:
-            # 统计该成员的滑动次数
+            # 统计该成员的滑动次数（包括 LIKE 和 DISLIKE）
             swipe_count = GroupSwipe.objects.filter(
                 group_session=group_session, user=member.user
             ).count()
 
-            print(f"[DEBUG check_finished] User: {member.user.username}")
+            print(
+                f"[DEBUG check_finished] User: {member.user.username} (ID: {member.user.id})"
+            )
             print(f"[DEBUG check_finished]   - Total swipes: {swipe_count}")
 
             # 滑动次数 >= 20 = 完成
@@ -1139,6 +1154,9 @@ class RecommendationService:
             f"[DEBUG check_finished] Result: {finished_members}/{total_members} finished"
         )
         print(f"[DEBUG check_finished] All finished: {all_finished}")
+        print(
+            f"[DEBUG check_finished] Active members list: {[m.user.username for m in active_members]}"
+        )
 
         return {
             "all_finished": all_finished,
