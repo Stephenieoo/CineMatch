@@ -621,10 +621,16 @@ class RecommendationService:
         Fetches from multiple pages and randomizes for variety
         添加随机性，避免每次返回相同电影
         Uses OR logic: movies matching ANY of the selected genres
+        Handles niche genres (TV Movie, Music, Western, War, Family) with lower thresholds
         """
         import random
 
         try:
+            # Niche genres that typically have fewer movies in TMDB
+            # These need lower vote_count thresholds or no threshold at all
+            niche_genre_ids = {10770, 10402, 37, 10752, 10751}  # TV Movie, Music, Western, War, Family
+            is_niche_genre = any(gid in niche_genre_ids for gid in genre_ids)
+
             # 构建类型筛选参数 - pipe-separated means OR logic (movies matching ANY genre)
             genre_str = "|".join(map(str, genre_ids))
 
@@ -632,8 +638,8 @@ class RecommendationService:
             # Fetch more pages to ensure we get enough movies, especially for genres with few movies
             # Calculate pages needed: at least enough for limit, plus extra for variety
             pages_per_sort = max(
-                10, (limit // 20) + 5
-            )  # Fetch at least 10 pages per sort order
+                15, (limit // 20) + 10
+            )  # Fetch at least 15 pages per sort order (increased for niche genres)
 
             # Try different sort orders for variety (includes vote_count.desc from develop)
             sort_options = [
@@ -645,21 +651,34 @@ class RecommendationService:
 
             # Use all sort options to maximize variety and ensure we get enough movies
             for sort_by in sort_options:
-                if len(all_movie_ids) >= limit * 2:
+                if len(all_movie_ids) >= limit * 3:
                     break  # Already have enough
 
                 for page in range(1, pages_per_sort + 1):
-                    # Lower vote_count threshold for later pages to get more movies
-                    vote_threshold = 100 if page <= 5 else 50 if page <= 10 else 20
+                    # For niche genres, use much lower thresholds or remove entirely
+                    if is_niche_genre:
+                        # Start with lower threshold, remove it completely after page 5
+                        if page <= 3:
+                            vote_threshold = 10  # Very low threshold for niche genres
+                        elif page <= 8:
+                            vote_threshold = 5  # Even lower
+                        else:
+                            vote_threshold = None  # No threshold - get all movies
+                    else:
+                        # Regular genres: progressive lowering
+                        vote_threshold = 100 if page <= 5 else 50 if page <= 10 else 20
 
                     params = {
                         "with_genres": genre_str,  # OR logic: movies matching ANY genre
                         "sort_by": sort_by,
-                        "vote_count.gte": vote_threshold,  # Lower threshold for more results
                         "page": page,
                         "include_adult": "false",
                         "language": "en-US",
                     }
+
+                    # Only add vote_count filter if threshold is set
+                    if vote_threshold is not None:
+                        params["vote_count.gte"] = vote_threshold
 
                     try:
                         response = requests.get(
@@ -680,7 +699,7 @@ class RecommendationService:
 
                         # Stop if we have enough or no more pages
                         total_pages = data.get("total_pages", 1)
-                        if len(all_movie_ids) >= limit * 2 or page >= total_pages:
+                        if len(all_movie_ids) >= limit * 3 or page >= total_pages:
                             break
                     except Exception:
                         continue  # Skip failed pages
@@ -693,27 +712,39 @@ class RecommendationService:
                     seen.add(movie_id)
                     unique_movies.append(movie_id)
 
-            # If we still don't have enough movies and multiple genres are selected,
-            # fetch from each genre individually and combine (OR logic)
-            if len(unique_movies) < limit and len(genre_ids) > 1:
+            # If we still don't have enough movies, fetch from each genre individually
+            # This works for both single and multiple genres
+            if len(unique_movies) < limit:
                 # Fetch from each genre individually to ensure we get enough movies
                 for genre_id in genre_ids:
-                    if len(unique_movies) >= limit * 2:
+                    if len(unique_movies) >= limit * 3:
                         break
                     try:
-                        # Fetch movies from this single genre (recursive call with randomize=False to avoid infinite loop)
+                        # For niche genres, use very low or no threshold
+                        is_single_niche = genre_id in niche_genre_ids
                         single_genre_params = {
                             "with_genres": str(genre_id),
                             "sort_by": "popularity.desc",
-                            "vote_count.gte": 20,  # Lower threshold for more results
                             "include_adult": "false",
                             "language": "en-US",
                         }
 
+                        # Only add vote_count for non-niche genres or early pages
+                        if not is_single_niche:
+                            single_genre_params["vote_count.gte"] = 20
+
+                        # Fetch more pages for niche genres
+                        max_pages = 20 if is_single_niche else 15
+
                         # Fetch multiple pages from this genre
-                        for page in range(1, 10):  # Fetch up to 10 pages per genre
-                            if len(unique_movies) >= limit * 2:
+                        for page in range(1, max_pages + 1):
+                            if len(unique_movies) >= limit * 3:
                                 break
+
+                            # For niche genres, remove threshold after a few pages
+                            if is_single_niche and page > 5:
+                                single_genre_params.pop("vote_count.gte", None)
+
                             single_genre_params["page"] = page
                             response = requests.get(
                                 f"{cls.TMDB_BASE_URL}/discover/movie",
@@ -734,7 +765,7 @@ class RecommendationService:
                                 if movie_id not in seen:
                                     seen.add(movie_id)
                                     unique_movies.append(movie_id)
-                                    if len(unique_movies) >= limit * 2:
+                                    if len(unique_movies) >= limit * 3:
                                         break
 
                             if page >= data.get("total_pages", 1):
