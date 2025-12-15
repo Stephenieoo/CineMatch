@@ -279,11 +279,16 @@ class RecommendationServiceTest(TestCase):
             ]
         }
 
-        # Add extra response for additional API calls
-        extra = MagicMock()
-        extra.status_code = 200
-        extra.json.return_value = {"results": []}
-        mock_get.side_effect = [movie_response, rec_response, extra]
+        # Add 4 mock responses (movie details + recommendations + similar + extra)
+        extra1 = MagicMock()
+        extra1.status_code = 200
+        extra1.json.return_value = {"results": []}
+
+        extra2 = MagicMock()
+        extra2.status_code = 200
+        extra2.json.return_value = {"results": []}
+
+        mock_get.side_effect = [movie_response, rec_response, extra1, extra2]
 
         results = RecommendationService.get_similar_movies(550, limit=10)
         self.assertGreaterEqual(len(results), 1)
@@ -343,11 +348,16 @@ class RecommendationServiceTest(TestCase):
             ]
         }
 
-        # Add extra response for additional API calls
-        extra = MagicMock()
-        extra.status_code = 200
-        extra.json.return_value = {"results": []}
-        mock_get.side_effect = [movie_response, rec_response, extra]
+        # Add 4 mock responses
+        extra1 = MagicMock()
+        extra1.status_code = 200
+        extra1.json.return_value = {"results": []}
+
+        extra2 = MagicMock()
+        extra2.status_code = 200
+        extra2.json.return_value = {"results": []}
+
+        mock_get.side_effect = [movie_response, rec_response, extra1, extra2]
 
         results = RecommendationService.get_similar_movies(550, limit=10)
         # Should only include movie with genre overlap
