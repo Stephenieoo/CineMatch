@@ -2,6 +2,7 @@
 Django management command to create the RDS database if it doesn't exist.
 Run this before migrations: python manage.py create_rds_database
 """
+
 from django.core.management.base import BaseCommand
 import os
 import sys
@@ -19,7 +20,9 @@ class Command(BaseCommand):
             sys.exit(0)  # Exit cleanly if not configured
 
         db_name = os.getenv("POSTGRES_DB", "cinematch_production")
-        self.stdout.write(f"Attempting to create database '{db_name}' on host '{postgres_host}'...")
+        self.stdout.write(
+            f"Attempting to create database '{db_name}' on host '{postgres_host}'..."
+        )
 
         try:
             # Try psycopg2 first (Django default)
@@ -39,9 +42,20 @@ class Command(BaseCommand):
                 # Try installing psycopg2-binary
                 import subprocess
                 import sys
+
                 try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "psycopg2-binary"])
+                    subprocess.check_call(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pip",
+                            "install",
+                            "-q",
+                            "psycopg2-binary",
+                        ]
+                    )
                     import psycopg2
+
                     conn = psycopg2.connect(
                         host=postgres_host,
                         port=os.getenv("POSTGRES_PORT", "5432"),
@@ -54,6 +68,7 @@ class Command(BaseCommand):
                 except Exception:
                     # Fallback to psycopg3
                     import psycopg
+
                     conn = psycopg.connect(
                         host=postgres_host,
                         port=os.getenv("POSTGRES_PORT", "5432"),
@@ -90,5 +105,6 @@ class Command(BaseCommand):
             # Print to stderr as well for better visibility in logs
             sys.stderr.write(f"ERROR: {error_msg}\n")
             # Don't fail the command - migrations will handle the error
-            sys.exit(0)  # Exit with 0 to not fail deployment (ignoreErrors handles this)
-
+            sys.exit(
+                0
+            )  # Exit with 0 to not fail deployment (ignoreErrors handles this)

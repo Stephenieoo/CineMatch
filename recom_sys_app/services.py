@@ -153,7 +153,7 @@ class RecommendationService:
         elif cached_deck and offset > 0:
             # Return next batch from cache if available
             if offset < len(cached_deck):
-                return cached_deck[offset:offset + limit]
+                return cached_deck[offset : offset + limit]  # noqa: E203
             # If cache exhausted, generate more (will be added to cache below)
 
         # Get user's interaction count to determine best approach
@@ -196,7 +196,10 @@ class RecommendationService:
                             # Add unique movies from preference-based
                             existing_ids = set(movie_ids)
                             for tmdb_id in pref_movies:
-                                if tmdb_id not in existing_ids and len(movie_ids) < generation_limit * 2:
+                                if (
+                                    tmdb_id not in existing_ids
+                                    and len(movie_ids) < generation_limit * 2
+                                ):
                                     movie_ids.append(tmdb_id)
                     except UserPreference.DoesNotExist:
                         pass
@@ -243,6 +246,7 @@ class RecommendationService:
 
         # Add randomization for variety (shuffle to avoid same order every time)
         import random
+
         if len(filtered_movies) > limit:
             random.shuffle(filtered_movies)
 
@@ -256,7 +260,7 @@ class RecommendationService:
             cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
             # Return the requested slice
             if offset < len(filtered_movies):
-                return filtered_movies[offset:offset + limit]
+                return filtered_movies[offset : offset + limit]  # noqa: E203
             else:
                 # Offset beyond available, return empty
                 return []
@@ -526,21 +530,21 @@ class RecommendationService:
         Fetches from multiple pages and randomizes for variety
         """
         import random
-        
+
         try:
             # 构建类型筛选参数
             genre_str = "|".join(map(str, genre_ids))
 
             all_movie_ids = []
             pages_to_fetch = min(5, (limit // 20) + 2)  # Fetch more pages for variety
-            
+
             # Try different sort orders for variety
             sort_options = [
                 "vote_average.desc",  # Highest rated
-                "popularity.desc",    # Most popular
+                "popularity.desc",  # Most popular
                 "release_date.desc",  # Newest
             ]
-            
+
             for sort_by in sort_options[:2]:  # Use 2 different sort orders
                 for page in range(1, pages_to_fetch + 1):
                     params = {
@@ -561,9 +565,11 @@ class RecommendationService:
                         data = response.json()
                         page_movies = [movie["id"] for movie in data.get("results", [])]
                         all_movie_ids.extend(page_movies)
-                        
+
                         # Stop if we have enough or no more pages
-                        if len(all_movie_ids) >= limit * 2 or page >= data.get("total_pages", 1):
+                        if len(all_movie_ids) >= limit * 2 or page >= data.get(
+                            "total_pages", 1
+                        ):
                             break
                     except Exception:
                         continue  # Skip failed pages
@@ -593,7 +599,7 @@ class RecommendationService:
         Fetches from multiple pages and randomizes for variety
         """
         import random
-        
+
         try:
             all_movie_ids = []
             pages_to_fetch = min(5, (limit // 20) + 2)  # Fetch more pages for variety
@@ -612,9 +618,11 @@ class RecommendationService:
                     data = response.json()
                     page_movies = [movie["id"] for movie in data.get("results", [])]
                     all_movie_ids.extend(page_movies)
-                    
+
                     # Stop if we have enough or no more pages
-                    if len(all_movie_ids) >= limit * 2 or page >= data.get("total_pages", 1):
+                    if len(all_movie_ids) >= limit * 2 or page >= data.get(
+                        "total_pages", 1
+                    ):
                         break
                 except Exception:
                     continue  # Skip failed pages

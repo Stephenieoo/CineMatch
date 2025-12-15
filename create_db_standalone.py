@@ -7,6 +7,7 @@ to a database that doesn't exist yet.
 import os
 import sys
 
+
 def create_database():
     postgres_host = os.getenv("POSTGRES_HOST")
     if not postgres_host:
@@ -20,6 +21,7 @@ def create_database():
         # Try psycopg2 first
         try:
             import psycopg2
+
             # Use sslmode='require' for RDS connections
             conn = psycopg2.connect(
                 host=postgres_host,
@@ -33,6 +35,7 @@ def create_database():
         except ImportError:
             # Fallback to psycopg3
             import psycopg
+
             conn = psycopg.connect(
                 host=postgres_host,
                 port=os.getenv("POSTGRES_PORT", "5432"),
@@ -62,12 +65,15 @@ def create_database():
 
     except Exception as e:
         error_msg = f"ERROR: Could not create database: {e}"
-        print(error_msg, file=sys.stderr)  # Print to stderr for better visibility in logs
+        print(
+            error_msg, file=sys.stderr
+        )  # Print to stderr for better visibility in logs
         print(error_msg)  # Also print to stdout
         import traceback
+
         traceback.print_exc()  # Print full traceback for debugging
         return 0  # Don't fail deployment (ignoreErrors handles this)
 
+
 if __name__ == "__main__":
     sys.exit(create_database())
-

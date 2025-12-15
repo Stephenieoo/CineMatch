@@ -225,7 +225,7 @@ def get_solo_deck(request):
             limit = min(max(limit, 1), 100)  # Clamp between 1-100
         except ValueError:
             limit = 20
-        
+
         try:
             offset = int(request.GET.get("offset", 0))
             offset = max(offset, 0)  # Ensure non-negative
@@ -269,8 +269,8 @@ def get_solo_deck(request):
             recommendation_method = "preference"
             # Use preference-based recommendations
             movie_ids = RecommendationService.get_solo_deck(
-                request.user, 
-                limit=limit * 3, 
+                request.user,
+                limit=limit * 3,
                 use_collaborative_filtering=False,
                 offset=offset,
             )
