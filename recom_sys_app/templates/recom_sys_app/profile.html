@@ -1524,6 +1524,12 @@
             <a href="{% url 'recom_sys:edit_profile' %}" class="profile-dropdown-item">
               ⚙️ Edit Profile
             </a>
+            <a href="{% url 'recom_sys:watched_movies' %}" class="profile-dropdown-item">
+              🎬 Watched Movies
+            </a>
+            <a href="#" class="profile-dropdown-item" onclick="openLetterboxdUpload(event)">
+              📁 Import Letterboxd
+            </a>
             <form method="post" action="{% url 'recom_sys:logout' %}" style="margin: 0;">
               {% csrf_token %}
               <button type="submit" class="profile-dropdown-item logout">
@@ -1652,7 +1658,7 @@
             </div>
             {% empty %}
             <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #999;">
-              <p>Loading group recommendations...</p>
+              <p>Create or join a group to start swiping with friends!</p>
             </div>
             {% endfor %}
           </div>
@@ -2560,6 +2566,140 @@
     // Load region on page load
     loadUserRegion();
 
+    // ========================================
+    // Letterboxd CSV Upload Functions
+    // ========================================
+    function openLetterboxdUpload(event) {
+      event.preventDefault();
+      document.getElementById('letterboxdModal').style.display = 'flex';
+      toggleProfileDropdown(); // Close profile dropdown
+    }
+
+    function closeLetterboxdModal() {
+      document.getElementById('letterboxdModal').style.display = 'none';
+      document.getElementById('letterboxdFile').value = '';
+      document.getElementById('uploadProgress').style.display = 'none';
+      document.getElementById('uploadResults').style.display = 'none';
+    }
+
+    async function uploadLetterboxdCSV() {
+      const fileInput = document.getElementById('letterboxdFile');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select a CSV file');
+        return;
+      }
+
+      if (!file.name.endsWith('.csv')) {
+        alert('Please select a valid CSV file');
+        return;
+      }
+
+      const progressDiv = document.getElementById('uploadProgress');
+      const resultsDiv = document.getElementById('uploadResults');
+      const uploadBtn = document.getElementById('uploadBtn');
+
+      progressDiv.style.display = 'block';
+      progressDiv.innerHTML = '<p>📤 Uploading and processing your Letterboxd data...</p>';
+      uploadBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('csv_file', file);
+
+      try {
+        const response = await fetch('/api/letterboxd/upload/', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+          },
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          progressDiv.innerHTML = `<p style="color: #4CAF50;">✅ ${data.message}</p>`;
+          resultsDiv.style.display = 'block';
+          resultsDiv.innerHTML = `
+            <h4>Import Summary:</h4>
+            <ul style="text-align: left; margin: 10px 0;">
+              <li>✅ Successfully imported: ${data.stats.imported}</li>
+              <li>⏭️ Already watched: ${data.stats.already_watched}</li>
+              <li>❌ Not found: ${data.stats.not_found}</li>
+              <li>📊 Total processed: ${data.stats.total}</li>
+            </ul>
+            ${data.stats.not_found > 0 ? '<p style="font-size: 0.9em; color: #999;">Some movies could not be matched in TMDB database.</p>' : ''}
+          `;
+
+          // Refresh the page after 3 seconds to show updated stats
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+        } else {
+          progressDiv.innerHTML = `<p style="color: #E50914;">❌ Error: ${data.error || 'Upload failed'}</p>`;
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        progressDiv.innerHTML = '<p style="color: #E50914;">❌ Network error. Please try again.</p>';
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    }
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
   </script>
+
+  <!-- Letterboxd Upload Modal -->
+  <div id="letterboxdModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: rgba(20, 20, 20, 0.98); border-radius: 16px; padding: 40px; max-width: 500px; width: 90%; border: 1px solid rgba(229, 9, 20, 0.3); box-shadow: 0 20px 60px rgba(0,0,0,0.9);">
+      <h2 style="color: #E50914; margin-bottom: 20px; font-size: 24px;">📁 Import Letterboxd Watched Films</h2>
+
+      <div style="margin-bottom: 25px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #E50914;">
+        <p style="margin-bottom: 10px; color: #ccc; font-size: 14px;">
+          Upload your Letterboxd <strong>films.csv</strong> file to import your watched movies.
+        </p>
+        <p style="margin-bottom: 10px; color: #999; font-size: 13px;">
+          📥 To export from Letterboxd:
+        </p>
+        <ol style="margin-left: 20px; color: #999; font-size: 13px;">
+          <li>Go to letterboxd.com/settings/data/</li>
+          <li>Click "Export Your Data"</li>
+          <li>Extract the ZIP file</li>
+          <li>Upload the <code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">films.csv</code> or <code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">watched.csv</code> file</li>
+        </ol>
+      </div>
+
+      <input type="file" id="letterboxdFile" accept=".csv" style="margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; width: 100%; cursor: pointer;">
+
+      <div id="uploadProgress" style="display: none; margin-bottom: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; text-align: center; color: white;"></div>
+
+      <div id="uploadResults" style="display: none; margin-bottom: 20px; padding: 15px; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 8px; color: white;"></div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button onclick="closeLetterboxdModal()" style="padding: 12px 24px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+          Cancel
+        </button>
+        <button id="uploadBtn" onclick="uploadLetterboxdCSV()" style="padding: 12px 24px; background: #E50914; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: 0 4px 12px rgba(229, 9, 20, 0.4);">
+          Upload & Import
+        </button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

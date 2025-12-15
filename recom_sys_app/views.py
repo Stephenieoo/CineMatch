@@ -690,23 +690,8 @@ def profile_view(request):
             solo_movies.extend(additional_movies)
             solo_movies = solo_movies[:14]
 
-        # Private Groups - Get popular/trending movies for preview
-        # Use user's favorite genres if available, otherwise use popular movies
-        user_genres = _get_signup_genre(request.user)
-        if user_genres:
-            genre_ids = RecommendationService._get_genre_ids_by_names(user_genres)
-            if genre_ids:
-                group_movie_ids = RecommendationService._get_movies_by_genres(
-                    genre_ids, limit=4
-                )
-            else:
-                group_movie_ids = RecommendationService._get_popular_movies(limit=4)
-        else:
-            group_movie_ids = RecommendationService._get_popular_movies(limit=4)
-
-        group_movies = (
-            _tmdb_fetch_by_ids(group_movie_ids[:4]) if group_movie_ids else []
-        )
+        # Private Groups - No placeholder movies, will load when user creates/joins a group
+        group_movies = []
 
         # Communities - Get one movie per genre for preview (7-8 genres)
         community_genres = [
