@@ -30,7 +30,12 @@ class RecommendationService:
 
     @classmethod
     def get_group_deck(
-        cls, group_session, user=None, limit=50, selected_genre_ids=None, use_collaborative_filtering=False
+        cls,
+        group_session,
+        user=None,
+        limit=50,
+        selected_genre_ids=None,
+        use_collaborative_filtering=False,
     ):
         """
         为群组生成个性化电影推荐列表
@@ -48,7 +53,9 @@ class RecommendationService:
         if user:
             cache_key = f"group_deck_{group_session.id}_user_{user.id}_cf_{use_collaborative_filtering}"
         else:
-            cache_key = f"group_deck_{group_session.id}_cf_{use_collaborative_filtering}"
+            cache_key = (
+                f"group_deck_{group_session.id}_cf_{use_collaborative_filtering}"
+            )
 
         cached_deck = cache.get(cache_key)
         if cached_deck:
@@ -79,16 +86,21 @@ class RecommendationService:
                 from .models import Interaction
 
                 interaction_count = Interaction.objects.filter(user=user).count()
-                if interaction_count >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF:
+                if (
+                    interaction_count
+                    >= CollaborativeFilteringService.MIN_INTERACTIONS_FOR_CF
+                ):
                     # Get CF recommendations
-                    cf_movies = CollaborativeFilteringService.get_collaborative_recommendations(
-                        user, limit=limit
+                    cf_movies = (
+                        CollaborativeFilteringService.get_collaborative_recommendations(
+                            user, limit=limit
+                        )
                     )
                     # Add CF movies to the list (prioritize them)
                     existing_ids = set(movie_ids)
                     cf_filtered = [mid for mid in cf_movies if mid not in existing_ids]
                     # Add CF movies at the beginning (higher priority)
-                    movie_ids = cf_filtered[:limit // 2] + movie_ids
+                    movie_ids = cf_filtered[: limit // 2] + movie_ids
             except Exception as e:
                 print(f"Collaborative filtering failed in group deck: {e}")
                 # Continue with group-based recommendations only
@@ -161,6 +173,12 @@ class RecommendationService:
             )
             filtered_movies = [mid for mid in combined_ids if mid not in swiped_ids]
 
+        # Add randomization for variety (shuffle to avoid same order every time)
+        import random
+
+        if len(filtered_movies) > limit:
+            random.shuffle(filtered_movies)
+
         # 缓存结果
         cache.set(cache_key, filtered_movies, cls.CACHE_TIMEOUT)
 
@@ -217,6 +235,7 @@ class RecommendationService:
         )
 
         # Filter by selected genres if provided
+        preference_based_ids = set()  # Track which movies are preference-based
         if selected_genre_ids:
             # SIMPLIFIED: Prioritize genre-based movies, but add 1-2 preference-based
             # Fetch many movies from selected genres (simple and direct)
@@ -230,31 +249,101 @@ class RecommendationService:
                 selected_genre_ids, limit=fetch_limit, randomize=True
             )
             # Remove already-swiped movies
-            filtered_movies = [
+            genre_filtered = [
                 mid for mid in genre_based_movies if mid not in swiped_ids
             ]
 
-            # Add 1-2 preference-based movies if user has preferences
+            # Add 20-30% preference-based movies if user has preferences
+            pref_movies_list = []
             try:
                 from .models import UserPreference
+
                 preference = UserPreference.objects.get(user=user)
                 if preference.genre_preferences and preference.total_interactions > 0:
-                    # Get 2-3 preference-based movies
+                    # Calculate target: 20-30% of the deck should be preference-based
+                    target_pref_count = max(
+                        int(limit * 0.25), 10
+                    )  # At least 10, or 25% of limit
+                    # Get more preference-based movies (we'll filter and mix them)
                     pref_movies = cls._generate_solo_recommendations_from_preferences(
-                        user, preference, limit=3
+                        user, preference, limit=target_pref_count * 2
                     )
-                    # Filter out swiped and add to beginning (higher priority)
-                    pref_filtered = [
-                        mid for mid in pref_movies
-                        if mid not in swiped_ids and mid not in filtered_movies
-                    ]
-                    # Add 1-2 preference movies at the beginning
-                    filtered_movies = pref_filtered[:2] + filtered_movies
+                    # Filter out swiped and ensure they match selected genres
+                    pref_filtered = []
+                    for mid in pref_movies:
+                        if mid not in swiped_ids and mid not in genre_filtered:
+                            # Verify movie matches selected genres (use cached details if available)
+                            movie_details = cls.get_movie_details(mid)
+                            if movie_details:
+                                movie_genres = movie_details.get("genres", [])
+                                # Convert genre names to IDs for comparison
+                                movie_genre_ids = cls._get_genre_ids_by_names(
+                                    movie_genres
+                                )
+                                # Only include if matches at least one selected genre
+                                if any(
+                                    gid in selected_genre_ids for gid in movie_genre_ids
+                                ):
+                                    pref_filtered.append(mid)
+                                    if len(pref_filtered) >= target_pref_count:
+                                        break
+                    # Track preference-based movie IDs
+                    pref_movies_list = pref_filtered[:target_pref_count]
+                    preference_based_ids = set(pref_movies_list)
             except UserPreference.DoesNotExist:
                 pass  # No preferences, skip
 
-            # Ensure we have at least 50 movies
-            filtered_movies = filtered_movies[: max(limit, min(50, len(filtered_movies)))]
+            # Mix preference-based and genre-based movies throughout the deck
+            # Strategy: Interleave them (every 3-4 genre movies, add 1 preference movie)
+            filtered_movies = []
+            pref_index = 0
+            genre_index = 0
+            pref_count = len(pref_movies_list)
+            genre_count = len(genre_filtered)
+
+            # Mix movies: for every 3 genre movies, add 1 preference movie
+            while len(filtered_movies) < limit and (
+                pref_index < pref_count or genre_index < genre_count
+            ):
+                # Add genre-based movies in batches of 3
+                for _ in range(3):
+                    if genre_index < genre_count:
+                        filtered_movies.append(genre_filtered[genre_index])
+                        genre_index += 1
+                        if len(filtered_movies) >= limit:
+                            break
+
+                # Add 1 preference-based movie after every 3 genre movies
+                if pref_index < pref_count and len(filtered_movies) < limit:
+                    filtered_movies.append(pref_movies_list[pref_index])
+                    pref_index += 1
+
+                # If we run out of one type, fill with the other
+                if pref_index >= pref_count and genre_index < genre_count:
+                    remaining = limit - len(filtered_movies)
+                    if remaining > 0:
+                        filtered_movies.extend(
+                            genre_filtered[genre_index : genre_index + remaining]
+                        )
+                    break
+                elif genre_index >= genre_count and pref_index < pref_count:
+                    remaining = limit - len(filtered_movies)
+                    if remaining > 0:
+                        filtered_movies.extend(
+                            pref_movies_list[pref_index : pref_index + remaining]
+                        )
+                    break
+
+            # Ensure we have at most the requested limit
+            filtered_movies = filtered_movies[:limit]
+
+            # Store preference-based IDs in cache for the view to retrieve
+            if preference_based_ids:
+                cache.set(
+                    f"solo_pref_ids_{user.id}_{'_'.join(map(str, selected_genre_ids))}",
+                    preference_based_ids,
+                    cls.CACHE_TIMEOUT,
+                )
         else:
             # No genre filtering - use simple approach: just remove swiped movies
             # If no genres selected, fall back to popular movies (simple)
@@ -265,10 +354,19 @@ class RecommendationService:
 
             filtered_movies = [mid for mid in movie_ids if mid not in swiped_ids]
 
-        # Add randomization for variety (shuffle to avoid same order every time)
+        # Add randomization for variety (shuffle only genre-based movies, keep preference-based at start)
         import random
 
-        if len(filtered_movies) > limit:
+        if len(filtered_movies) > limit and preference_based_ids:
+            # Shuffle only the genre-based portion (after preference-based movies)
+            pref_count = len([m for m in filtered_movies if m in preference_based_ids])
+            if pref_count > 0:
+                genre_portion = filtered_movies[pref_count:]
+                random.shuffle(genre_portion)
+                filtered_movies = filtered_movies[:pref_count] + genre_portion
+            else:
+                random.shuffle(filtered_movies)
+        elif len(filtered_movies) > limit:
             random.shuffle(filtered_movies)
 
         # If we have cached deck, merge with new movies (for pagination)
@@ -559,7 +657,13 @@ class RecommendationService:
         try:
             # Niche genres that typically have fewer movies in TMDB
             # These need lower vote_count thresholds or no threshold at all
-            niche_genre_ids = {10770, 10402, 37, 10752, 10751}  # TV Movie, Music, Western, War, Family
+            niche_genre_ids = {
+                10770,
+                10402,
+                37,
+                10752,
+                10751,
+            }  # TV Movie, Music, Western, War, Family
             is_niche_genre = any(gid in niche_genre_ids for gid in genre_ids)
 
             # 构建类型筛选参数 - pipe-separated means OR logic (movies matching ANY genre)
@@ -854,22 +958,29 @@ class RecommendationService:
     def invalidate_deck_cache(cls, group_session):
         """
         清除群组推荐缓存（当有新的 swipe 或成员变化时调用）
-        现在需要清除所有用户的个性化缓存
+        现在需要清除所有用户的个性化缓存，包括所有 CF 变体
         """
         # 清除旧的群组级别缓存（向后兼容）
         cache_key = f"group_deck_{group_session.id}"
         cache.delete(cache_key)
 
-        # 清除所有活跃成员的用户级别缓存
+        # 清除所有活跃成员的用户级别缓存（包括所有 CF 变体）
         active_members = GroupMember.objects.filter(
             group_session=group_session, is_active=True
         ).select_related("user")
 
         for member in active_members:
-            user_cache_key = f"group_deck_{group_session.id}_user_{member.user.id}"
-            cache.delete(user_cache_key)
+            # Clear cache for both CF=True and CF=False variants
+            for use_cf in [True, False]:
+                user_cache_key = (
+                    f"group_deck_{group_session.id}_user_{member.user.id}_cf_{use_cf}"
+                )
+                cache.delete(user_cache_key)
+            # Also clear old format (without _cf_ suffix) for backward compatibility
+            user_cache_key_old = f"group_deck_{group_session.id}_user_{member.user.id}"
+            cache.delete(user_cache_key_old)
             print(
-                f"[DEBUG] Cleared cache for user {member.user.username}: {user_cache_key}"
+                f"[DEBUG] Cleared cache for user {member.user.username} (all variants)"
             )
 
     @classmethod
@@ -929,12 +1040,12 @@ class RecommendationService:
     def get_similar_movies(cls, tmdb_id, limit=20):
         """
         Get similar movies using TMDb's recommendations endpoint with filtering
-        for more relevant and recent results. Only returns movies that share
-        at least one genre with the original movie.
+        for more relevant results. Returns movies that share at least one genre
+        with the original movie and meet quality thresholds.
 
         Args:
             tmdb_id: TMDb movie ID
-            limit: Maximum number of similar movies to return
+            limit: Maximum number of similar movies to return (default: 20)
 
         Returns:
             list: List of similar movie dictionaries
@@ -960,74 +1071,197 @@ class RecommendationService:
                 genre["id"] for genre in original_movie.get("genres", [])
             )
 
-            # Use recommendations endpoint for better matches
-            url = f"{cls.TMDB_BASE_URL}/movie/{tmdb_id}/recommendations"
-            params = {"language": "en-US", "page": 1}
+            # Fetch from multiple pages to get more results
+            all_results = []
+            max_pages = 5  # Fetch up to 5 pages for more variety
+            target_results = max(limit * 2, 50)  # Get more than needed for filtering
 
-            response = requests.get(
-                url, headers=cls.TMDB_HEADERS, params=params, timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
+            for page in range(1, max_pages + 1):
+                # Use recommendations endpoint for better matches
+                url = f"{cls.TMDB_BASE_URL}/movie/{tmdb_id}/recommendations"
+                params = {"language": "en-US", "page": page}
 
-            results = []
-            for movie in data.get("results", []):
-                # Get movie year
-                release_date = movie.get("release_date", "")
-                year = release_date[:4] if release_date else ""
-
-                # Get movie genres
-                movie_genre_ids = set(movie.get("genre_ids", []))
-
-                # Filter criteria for more specific results:
-                # 1. Must have a release year
-                # 2. Movie must be from 2000 or newer (avoid very old films)
-                # 3. Must have at least 100 votes (avoid obscure films)
-                # 4. Must have rating of 5.0 or higher (avoid low-quality films)
-                # 5. Must share at least one genre with the original movie
-                if not year:
-                    continue
-                if int(year) < 2000:
-                    continue
-                if movie.get("vote_count", 0) < 100:
-                    continue
-                if movie.get("vote_average", 0) < 5.0:
-                    continue
-                # Check genre overlap - must share at least 2 genres for better relevance
-                genre_overlap = original_genres.intersection(movie_genre_ids)
-                if len(genre_overlap) < 2:
-                    continue
-
-                # Calculate genre match score (more shared genres = higher score)
-                genre_match_score = len(genre_overlap)
-
-                results.append(
-                    {
-                        "tmdb_id": movie.get("id"),
-                        "title": movie.get("title"),
-                        "year": year,
-                        "poster_path": movie.get("poster_path"),
-                        "overview": movie.get("overview", ""),
-                        "vote_average": movie.get("vote_average", 0),
-                        "backdrop_path": movie.get("backdrop_path"),
-                        "genre_ids": movie.get("genre_ids", []),
-                        "vote_count": movie.get("vote_count", 0),
-                        "genre_match_score": genre_match_score,
-                    }
+                response = requests.get(
+                    url, headers=cls.TMDB_HEADERS, params=params, timeout=10
                 )
+                response.raise_for_status()
+                data = response.json()
 
-            # Sort by genre match score first, then by vote average
-            results.sort(
-                key=lambda x: (x["genre_match_score"], x["vote_average"]), reverse=True
-            )
+                page_results = data.get("results", [])
+                if not page_results:
+                    break  # No more results
+
+                for movie in page_results:
+                    # Get movie year
+                    release_date = movie.get("release_date", "")
+                    year = release_date[:4] if release_date else ""
+
+                    # Get movie genres
+                    movie_genre_ids = set(movie.get("genre_ids", []))
+
+                    # Filter criteria (relaxed for more results):
+                    # 1. Must have a release year
+                    # 2. Movie must be from 1990 or newer (relaxed from 2000)
+                    # 3. Must have at least 20 votes (lowered from 100)
+                    # 4. Must have rating of 4.0 or higher (lowered from 5.0)
+                    # 5. Must share at least 1 genre with the original movie (relaxed from 2)
+                    if not year:
+                        continue
+                    try:
+                        if int(year) < 1990:
+                            continue
+                    except ValueError:
+                        continue
+                    if movie.get("vote_count", 0) < 20:
+                        continue
+                    if movie.get("vote_average", 0) < 4.0:
+                        continue
+                    # Check genre overlap - must share at least 1 genre for similarity
+                    genre_overlap = original_genres.intersection(movie_genre_ids)
+                    if len(genre_overlap) < 1:
+                        continue
+
+                    # Calculate similarity score:
+                    # - Genre match score (more shared genres = higher score)
+                    # - Rating score (higher rating = higher score)
+                    # - Vote count score (more votes = more popular/trusted)
+                    genre_match_score = len(genre_overlap)
+                    rating_score = (
+                        movie.get("vote_average", 0) / 10.0
+                    )  # Normalize to 0-1
+                    vote_score = min(
+                        movie.get("vote_count", 0) / 1000.0, 1.0
+                    )  # Cap at 1000 votes
+                    similarity_score = (
+                        genre_match_score * 0.5 + rating_score * 0.3 + vote_score * 0.2
+                    )
+
+                    # Avoid duplicates
+                    movie_id = movie.get("id")
+                    if any(r["tmdb_id"] == movie_id for r in all_results):
+                        continue
+
+                    all_results.append(
+                        {
+                            "tmdb_id": movie_id,
+                            "title": movie.get("title"),
+                            "year": year,
+                            "poster_path": movie.get("poster_path"),
+                            "overview": movie.get("overview", ""),
+                            "vote_average": movie.get("vote_average", 0),
+                            "backdrop_path": movie.get("backdrop_path"),
+                            "genre_ids": movie.get("genre_ids", []),
+                            "vote_count": movie.get("vote_count", 0),
+                            "genre_match_score": genre_match_score,
+                            "similarity_score": similarity_score,
+                        }
+                    )
+
+                    # Stop if we have enough results
+                    if len(all_results) >= target_results:
+                        break
+
+                # Stop if we have enough results
+                if len(all_results) >= target_results:
+                    break
+
+            # If we don't have enough results from recommendations, try the "similar" endpoint
+            if len(all_results) < limit:
+                print(
+                    f"[DEBUG] Only found {len(all_results)} from recommendations, trying similar endpoint..."
+                )
+                for page in range(1, 3):  # Try 2 pages from similar endpoint
+                    similar_url = f"{cls.TMDB_BASE_URL}/movie/{tmdb_id}/similar"
+                    similar_params = {"language": "en-US", "page": page}
+
+                    similar_response = requests.get(
+                        similar_url,
+                        headers=cls.TMDB_HEADERS,
+                        params=similar_params,
+                        timeout=10,
+                    )
+                    similar_response.raise_for_status()
+                    similar_data = similar_response.json()
+
+                    similar_page_results = similar_data.get("results", [])
+                    if not similar_page_results:
+                        break
+
+                    for movie in similar_page_results:
+                        # Get movie year
+                        release_date = movie.get("release_date", "")
+                        year = release_date[:4] if release_date else ""
+
+                        # Get movie genres
+                        movie_genre_ids = set(movie.get("genre_ids", []))
+
+                        # Apply same filtering criteria
+                        if not year:
+                            continue
+                        try:
+                            if int(year) < 1990:
+                                continue
+                        except ValueError:
+                            continue
+                        if movie.get("vote_count", 0) < 20:
+                            continue
+                        if movie.get("vote_average", 0) < 4.0:
+                            continue
+                        # Check genre overlap
+                        genre_overlap = original_genres.intersection(movie_genre_ids)
+                        if len(genre_overlap) < 1:
+                            continue
+
+                        # Calculate similarity score
+                        genre_match_score = len(genre_overlap)
+                        rating_score = movie.get("vote_average", 0) / 10.0
+                        vote_score = min(movie.get("vote_count", 0) / 1000.0, 1.0)
+                        similarity_score = (
+                            genre_match_score * 0.5
+                            + rating_score * 0.3
+                            + vote_score * 0.2
+                        )
+
+                        # Avoid duplicates
+                        movie_id = movie.get("id")
+                        if any(r["tmdb_id"] == movie_id for r in all_results):
+                            continue
+
+                        all_results.append(
+                            {
+                                "tmdb_id": movie_id,
+                                "title": movie.get("title"),
+                                "year": year,
+                                "poster_path": movie.get("poster_path"),
+                                "overview": movie.get("overview", ""),
+                                "vote_average": movie.get("vote_average", 0),
+                                "backdrop_path": movie.get("backdrop_path"),
+                                "genre_ids": movie.get("genre_ids", []),
+                                "vote_count": movie.get("vote_count", 0),
+                                "genre_match_score": genre_match_score,
+                                "similarity_score": similarity_score,
+                            }
+                        )
+
+                        if len(all_results) >= target_results:
+                            break
+
+                    if len(all_results) >= target_results:
+                        break
+
+            # Sort by similarity score (descending) for best matches first
+            all_results.sort(key=lambda x: x["similarity_score"], reverse=True)
 
             # Cache for 1 hour
-            cache.set(cache_key, results, cls.CACHE_TIMEOUT)
+            cache.set(cache_key, all_results, cls.CACHE_TIMEOUT)
 
-            return results[:limit]
+            return all_results[:limit]
 
         except Exception as e:
             print(f"Error fetching similar movies: {e}")
+            import traceback
+
+            traceback.print_exc()
             return []
 
     @classmethod
@@ -1058,14 +1292,16 @@ class RecommendationService:
 
         finished_members = 0
 
-        # 检查每个成员
+        # 检查每个成员（包括当前用户）
         for member in active_members:
-            # 统计该成员的滑动次数
+            # 统计该成员的滑动次数（包括 LIKE 和 DISLIKE）
             swipe_count = GroupSwipe.objects.filter(
                 group_session=group_session, user=member.user
             ).count()
 
-            print(f"[DEBUG check_finished] User: {member.user.username}")
+            print(
+                f"[DEBUG check_finished] User: {member.user.username} (ID: {member.user.id})"
+            )
             print(f"[DEBUG check_finished]   - Total swipes: {swipe_count}")
 
             # 滑动次数 >= 20 = 完成
@@ -1083,6 +1319,9 @@ class RecommendationService:
             f"[DEBUG check_finished] Result: {finished_members}/{total_members} finished"
         )
         print(f"[DEBUG check_finished] All finished: {all_finished}")
+        print(
+            f"[DEBUG check_finished] Active members list: {[m.user.username for m in active_members]}"
+        )
 
         return {
             "all_finished": all_finished,

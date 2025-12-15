@@ -313,9 +313,19 @@
       }
 
       grid.innerHTML = filtered.map(movie => {
-        const posterUrl = movie.poster_path
-          ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-          : 'https://via.placeholder.com/300x450?text=No+Poster';
+        // Use poster_url if available, otherwise try poster_path, otherwise placeholder
+        let posterUrl = '';
+        if (movie.poster_url) {
+          posterUrl = movie.poster_url;
+          // Ensure HTTPS
+          if (posterUrl.startsWith('http://')) {
+            posterUrl = posterUrl.replace('http://', 'https://');
+          }
+        } else if (movie.poster_path) {
+          posterUrl = `https://image.tmdb.org/t/p/w500${movie.poster_path}`;
+        } else {
+          posterUrl = 'https://via.placeholder.com/300x450?text=No+Poster';
+        }
 
         const badgeClass = movie.status === 'WATCHED_LIKED' ? 'badge-liked'
           : movie.status === 'WATCHED_DISLIKED' ? 'badge-disliked'
@@ -328,7 +338,7 @@
         return `
           <div class="movie-card" onclick="window.location.href='/recommend/?movie_id=${movie.tmdb_id}'">
             <span class="status-badge ${badgeClass}">${badgeText}</span>
-            <img src="${posterUrl}" alt="${movie.title}" class="movie-poster" loading="lazy">
+            <img src="${posterUrl}" alt="${movie.title}" class="movie-poster" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Poster'">
             <div class="movie-info">
               <div class="movie-title">${movie.title}</div>
               <div class="movie-meta">

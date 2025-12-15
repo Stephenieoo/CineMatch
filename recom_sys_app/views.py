@@ -1604,7 +1604,8 @@ def get_similar_movies_api(request, tmdb_id):
     API endpoint to get similar movies for a given movie ID
     """
     try:
-        limit = int(request.GET.get("limit", 20))
+        # Increase default limit to return more movies
+        limit = int(request.GET.get("limit", 30))
 
         # Use RecommendationService to get similar movies
         results = RecommendationService.get_similar_movies(tmdb_id, limit=limit)

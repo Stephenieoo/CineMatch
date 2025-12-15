@@ -247,26 +247,20 @@ def get_solo_deck(request):
 
         movie_ids = RecommendationService.get_solo_deck(
             request.user,
-            limit=requested_limit * 2,  # Get more to account for filtering and ensure 50+
+            limit=requested_limit
+            * 2,  # Get more to account for filtering and ensure 50+
             use_collaborative_filtering=False,  # Disable CF for simplicity
             offset=offset,
             selected_genre_ids=selected_genres,  # Pass selected genres
         )
 
-        # Get preference-based movie IDs to mark them (first 2 movies)
-        from recom_sys_app.models import UserPreference
-        preference_movie_ids = set()
-        try:
-            preference = UserPreference.objects.get(user=request.user)
-            if preference.genre_preferences and preference.total_interactions > 0:
-                # Get first 2 preference-based movies from the list
-                from recom_sys_app.services import RecommendationService
-                pref_movies = RecommendationService._generate_solo_recommendations_from_preferences(
-                    request.user, preference, limit=2
-                )
-                preference_movie_ids = set(pref_movies[:2])
-        except UserPreference.DoesNotExist:
-            pass
+        # Get preference-based movie IDs from cache (stored by RecommendationService)
+        from django.core.cache import cache
+
+        cache_key = (
+            f"solo_pref_ids_{request.user.id}_{'_'.join(map(str, selected_genres))}"
+        )
+        preference_movie_ids = cache.get(cache_key, set())
 
         # Fetch movie details from TMDB
         movies = _tmdb_fetch_by_ids(movie_ids[: limit * 2])
@@ -316,19 +310,26 @@ def get_solo_deck(request):
 
         movies = filtered_movies[:limit]
 
-        # Add recommendation source/reason and watch providers to each movie
+        # Add recommendation source/reason to each movie
+        # Watch providers are fetched lazily on the frontend to improve initial load time
         for movie in movies:
-            movie["watch_providers"] = _fetch_watch_providers(
-                movie["tmdb_id"], user_region
-            )
-
-            # Mark preference-based movies (first 1-2)
+            # Mark preference-based movies
             if movie["tmdb_id"] in preference_movie_ids:
                 movie["recommendation_reason"] = "Based on your preferences"
                 movie["recommendation_source"] = "preference_based"
             else:
                 movie["recommendation_reason"] = "Based on selected genres"
                 movie["recommendation_source"] = "genre_based"
+
+            # Initialize watch_providers as empty - can be fetched on demand
+            movie["watch_providers"] = {
+                "region": user_region,
+                "flatrate": [],
+                "rent": [],
+                "buy": [],
+                "link": "",
+                "available": False,
+            }
 
         return JsonResponse(
             {
@@ -827,7 +828,7 @@ def _fetch_watch_providers(movie_id: int, region: str = "US") -> dict:
 
 def _tmdb_fetch_by_ids(movie_ids: list) -> list:
     """
-    Fetch TMDB details for multiple movie IDs.
+    Fetch TMDB details for multiple movie IDs using parallel requests for better performance.
 
     Args:
         movie_ids: List of TMDB movie IDs
@@ -835,14 +836,17 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
     Returns:
         List of movie dictionaries with metadata
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     out = []
+    movie_ids = [mid for mid in movie_ids if mid]  # Filter out None/empty IDs
 
-    for tmdb_id in movie_ids:
-        if not tmdb_id:
-            continue
+    if not movie_ids:
+        return out
 
+    def fetch_single_movie(tmdb_id):
+        """Fetch a single movie's details"""
         try:
-            # Get movie details from TMDB
             r = requests.get(
                 f"{TMDB_BASE}/movie/{tmdb_id}",
                 headers=TMDB_HEADERS,
@@ -856,33 +860,41 @@ def _tmdb_fetch_by_ids(movie_ids: list) -> list:
             genre_names = [g.get("name") for g in genre_objects]
             genre_ids = [g.get("id") for g in genre_objects if g.get("id")]
 
-            out.append(
-                {
-                    "found": True,
-                    "title": det.get("title", ""),
-                    "tmdb_id": det.get("id"),
-                    "year": (det.get("release_date") or "")[:4],
-                    "overview": det.get("overview"),
-                    "vote_average": det.get("vote_average"),
-                    "vote_count": det.get("vote_count"),
-                    "poster_url": (
-                        (IMG_BASE + det["poster_path"])
-                        if det.get("poster_path")
-                        else None
-                    ),
-                    "backdrop_url": (
-                        (IMG_BASE + det["backdrop_path"])
-                        if det.get("backdrop_path")
-                        else None
-                    ),
-                    "genres": genre_names,  # Keep genre names for display
-                    "genre_ids": genre_ids,  # Add genre IDs for filtering
-                    "runtime": det.get("runtime"),
-                }
-            )
+            return {
+                "found": True,
+                "title": det.get("title", ""),
+                "tmdb_id": det.get("id"),
+                "year": (det.get("release_date") or "")[:4],
+                "overview": det.get("overview"),
+                "vote_average": det.get("vote_average"),
+                "vote_count": det.get("vote_count"),
+                "poster_url": (
+                    (IMG_BASE + det["poster_path"]) if det.get("poster_path") else None
+                ),
+                "backdrop_url": (
+                    (IMG_BASE + det["backdrop_path"])
+                    if det.get("backdrop_path")
+                    else None
+                ),
+                "genres": genre_names,  # Keep genre names for display
+                "genre_ids": genre_ids,  # Add genre IDs for filtering
+                "runtime": det.get("runtime"),
+            }
         except Exception as e:
             print(f"Error fetching movie {tmdb_id}: {e}")
-            continue
+            return None
+
+    # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_id = {
+            executor.submit(fetch_single_movie, tmdb_id): tmdb_id
+            for tmdb_id in movie_ids
+        }
+
+        for future in as_completed(future_to_id):
+            result = future.result()
+            if result:
+                out.append(result)
 
     return out
 
