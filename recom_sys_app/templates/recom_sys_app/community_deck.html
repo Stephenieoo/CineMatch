@@ -1530,6 +1530,7 @@
 
             // Get poster URL - handle both poster_url and poster_path
             let posterUrl = '';
+            let isPlaceholder = false;
             if (movie.poster_url) {
                 posterUrl = movie.poster_url;
                 if (posterUrl.startsWith('http://')) {
@@ -1537,25 +1538,33 @@
                 }
             } else if (movie.poster_path) {
                 posterUrl = `https://image.tmdb.org/t/p/w500${movie.poster_path}`;
+            } else {
+                // No poster available - use placeholder
+                posterUrl = `https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}`;
+                isPlaceholder = true;
             }
             
             const year = movie.release_date ? new Date(movie.release_date).getFullYear() : movie.year || 'N/A';
             const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
 
-            card.innerHTML = `
-                <button class="info-button" onclick="event.stopPropagation(); openMovieDetails(${movie.tmdb_id})" title="View Details">ℹ️</button>
-                <img src="${posterUrl || `https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}`}" alt="${escapeHtml(movie.title)}" class="card-image" draggable="false" onerror="this.src='https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}'">
-                <div class="overlay like">LIKE</div>
-                <div class="overlay dislike">PASS</div>
+            // For placeholders, don't show movie details - just the genre name in the placeholder
+            const movieInfoHtml = isPlaceholder ? '' : `
                 <div class="p-6" style="color: white; cursor: pointer;">
                     <h2 class="text-2xl font-bold mb-2">${escapeHtml(movie.title)}</h2>
                     <div class="flex items-center gap-4 text-sm mb-3" style="color: #999;">
                         <span>⭐ ${rating}</span>
                         <span>📅 ${year}</span>
-                            </div>
+                    </div>
                     <p class="text-sm line-clamp-3" style="color: #ccc;">${escapeHtml(movie.overview || 'No description available.')}</p>
                     <p class="text-xs mt-2" style="color: rgba(229, 9, 20, 0.7);">Tap for details • Swipe to rate</p>
                 </div>
+            `;
+
+            card.innerHTML = `
+                ${!isPlaceholder ? '<button class="info-button" onclick="event.stopPropagation(); openMovieDetails(' + movie.tmdb_id + ')" title="View Details">ℹ️</button>' : ''}
+                <img src="${posterUrl}" alt="${isPlaceholder ? (GENRE_NAME || 'Movie') : escapeHtml(movie.title)}" class="card-image" draggable="false" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x600?text=${encodeURIComponent(GENRE_NAME || 'Movie')}'; this.dataset.isPlaceholder='true';">
+                ${!isPlaceholder ? '<div class="overlay like">LIKE</div><div class="overlay dislike">PASS</div>' : ''}
+                ${movieInfoHtml}
             `;
 
             if (index === currentIndex) {
