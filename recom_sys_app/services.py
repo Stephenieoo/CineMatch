@@ -620,31 +620,45 @@ class RecommendationService:
         从 TMDB 获取指定类型的高评分电影
         Fetches from multiple pages and randomizes for variety
         添加随机性，避免每次返回相同电影
+        Uses OR logic: movies matching ANY of the selected genres
         """
         import random
 
         try:
-            # 构建类型筛选参数
+            # 构建类型筛选参数 - pipe-separated means OR logic (movies matching ANY genre)
             genre_str = "|".join(map(str, genre_ids))
 
             all_movie_ids = []
-            pages_to_fetch = min(5, (limit // 20) + 2)  # Fetch more pages for variety
+            # Fetch more pages to ensure we get enough movies, especially for genres with few movies
+            # Calculate pages needed: at least enough for limit, plus extra for variety
+            pages_per_sort = max(
+                10, (limit // 20) + 5
+            )  # Fetch at least 10 pages per sort order
 
             # Try different sort orders for variety (includes vote_count.desc from develop)
             sort_options = [
+                "popularity.desc",  # Most popular / 最受欢迎 (usually has most results)
                 "vote_average.desc",  # Highest rated / 评分最高
-                "popularity.desc",  # Most popular / 最受欢迎
                 "release_date.desc",  # Newest / 最新上映
                 "vote_count.desc",  # Most reviewed / 评论最多
             ]
 
-            for sort_by in sort_options[:2]:  # Use 2 different sort orders
-                for page in range(1, pages_to_fetch + 1):
+            # Use all sort options to maximize variety and ensure we get enough movies
+            for sort_by in sort_options:
+                if len(all_movie_ids) >= limit * 2:
+                    break  # Already have enough
+
+                for page in range(1, pages_per_sort + 1):
+                    # Lower vote_count threshold for later pages to get more movies
+                    vote_threshold = 100 if page <= 5 else 50 if page <= 10 else 20
+
                     params = {
-                        "with_genres": genre_str,
+                        "with_genres": genre_str,  # OR logic: movies matching ANY genre
                         "sort_by": sort_by,
-                        "vote_count.gte": 100,  # 至少100个投票
+                        "vote_count.gte": vote_threshold,  # Lower threshold for more results
                         "page": page,
+                        "include_adult": "false",
+                        "language": "en-US",
                     }
 
                     try:
@@ -657,12 +671,16 @@ class RecommendationService:
                         response.raise_for_status()
                         data = response.json()
                         page_movies = [movie["id"] for movie in data.get("results", [])]
+
+                        if not page_movies:
+                            # No more movies on this page, try next sort order
+                            break
+
                         all_movie_ids.extend(page_movies)
 
                         # Stop if we have enough or no more pages
-                        if len(all_movie_ids) >= limit * 2 or page >= data.get(
-                            "total_pages", 1
-                        ):
+                        total_pages = data.get("total_pages", 1)
+                        if len(all_movie_ids) >= limit * 2 or page >= total_pages:
                             break
                     except Exception:
                         continue  # Skip failed pages
@@ -674,6 +692,55 @@ class RecommendationService:
                 if movie_id not in seen:
                     seen.add(movie_id)
                     unique_movies.append(movie_id)
+
+            # If we still don't have enough movies and multiple genres are selected,
+            # fetch from each genre individually and combine (OR logic)
+            if len(unique_movies) < limit and len(genre_ids) > 1:
+                # Fetch from each genre individually to ensure we get enough movies
+                for genre_id in genre_ids:
+                    if len(unique_movies) >= limit * 2:
+                        break
+                    try:
+                        # Fetch movies from this single genre (recursive call with randomize=False to avoid infinite loop)
+                        single_genre_params = {
+                            "with_genres": str(genre_id),
+                            "sort_by": "popularity.desc",
+                            "vote_count.gte": 20,  # Lower threshold for more results
+                            "include_adult": "false",
+                            "language": "en-US",
+                        }
+
+                        # Fetch multiple pages from this genre
+                        for page in range(1, 10):  # Fetch up to 10 pages per genre
+                            if len(unique_movies) >= limit * 2:
+                                break
+                            single_genre_params["page"] = page
+                            response = requests.get(
+                                f"{cls.TMDB_BASE_URL}/discover/movie",
+                                params=single_genre_params,
+                                headers=cls.TMDB_HEADERS,
+                                timeout=10,
+                            )
+                            response.raise_for_status()
+                            data = response.json()
+                            page_movies = [
+                                movie["id"] for movie in data.get("results", [])
+                            ]
+
+                            if not page_movies:
+                                break
+
+                            for movie_id in page_movies:
+                                if movie_id not in seen:
+                                    seen.add(movie_id)
+                                    unique_movies.append(movie_id)
+                                    if len(unique_movies) >= limit * 2:
+                                        break
+
+                            if page >= data.get("total_pages", 1):
+                                break
+                    except Exception:
+                        continue  # Skip failed genres
 
             # Randomize for variety if requested
             if randomize and len(unique_movies) > limit:
