@@ -24,15 +24,15 @@ from .serializers import (
     UserRegistrationSerializer,
 )
 
-# Import helper functions from views.py
-from .views import (
+# Import helper functions from dedicated modules
+from .ai_agent import (
     _get_signup_movies,
     _get_signup_genre,
-    _tmdb_fetch_all,
     _extract_titles,
     _as_text,
     _build_recommendation_agent,
 )
+from .views_movie import _tmdb_fetch_all
 
 load_dotenv(settings.BASE_DIR / ".env")
 

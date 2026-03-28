@@ -3,9 +3,13 @@ WebSocket consumers for real-time group chat functionality.
 """
 
 import json
+import time
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
+
+_logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -73,13 +77,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Reject connection for unauthenticated users
             await self.close(code=4001)
             return
-
-        # # Verify user is member of this group
-        # is_member = await self.verify_group_membership()
-        # if not is_member:
-        #     # Reject connection if user is not a group member
-        #     await self.close(code=4003)
-        #     return
 
         # Join room group
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
@@ -164,6 +161,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Args:
             data: Message data dictionary
         """
+        t_receive = time.monotonic()
         message_content = data.get("message", "").strip()
 
         if not message_content:
@@ -188,6 +186,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "username": self.user.username,
                 "timestamp": await self.get_current_timestamp(),
             },
+        )
+
+        # Measure server-side processing latency (receive → broadcast)
+        latency_ms = (time.monotonic() - t_receive) * 1000
+        _logger.info(
+            "[WS latency] group=%s user=%s latency=%.2fms",
+            self.group_id,
+            self.user.username,
+            latency_ms,
         )
 
     async def handle_typing_indicator(self, data):
@@ -488,17 +495,17 @@ class MatchConsumer(AsyncWebsocketConsumer):
         Returns:
             bool: True if user is a member, False otherwise
         """
-        # from recom_sys_app.models import GroupSession, GroupMember
-        # try:
-        #     return GroupMember.objects.filter(
-        #         group_session__group_code=self.group_code,
-        #         user=self.user,
-        #         is_active=True
-        #     ).exists()
-        # except Exception as e:
-        #     print(f"[MatchConsumer] Error verifying group membership: {e}")
-        #     return False
-        return True
+        from recom_sys_app.models import GroupMember
+
+        try:
+            return GroupMember.objects.filter(
+                group_session__group_code=self.group_code,
+                user=self.user,
+                is_active=True,
+            ).exists()
+        except Exception as e:
+            _logger.error("[MatchConsumer] Error verifying group membership: %s", e)
+            return False
 
     @database_sync_to_async
     def get_current_timestamp(self):

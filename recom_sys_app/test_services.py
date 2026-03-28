@@ -17,6 +17,7 @@ from django.core.cache import cache
 from unittest.mock import patch, Mock, MagicMock
 from django.contrib.auth import get_user_model
 from recom_sys_app.services import RecommendationService
+from recom_sys_app.services.tmdb_client import TmdbClient, _L1
 from recom_sys_app.models import (
     UserProfile,
     Interaction,
@@ -35,6 +36,7 @@ class RecommendationServiceTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
+        _L1.clear()  # also clear in-process L1 cache to prevent cross-test pollution
         self.user = User.objects.create_user(
             username="testuser", email="test@example.com", password="testpass123"
         )
@@ -49,8 +51,9 @@ class RecommendationServiceTest(TestCase):
     def tearDown(self):
         """Clean up after tests"""
         cache.clear()
+        _L1.clear()  # also clear in-process L1 cache
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_popular_movies_success(self, mock_get):  # ✅ 添加 mock_get 参数
         """Test successful retrieval of popular movies with randomization"""
         # Mock the API response
@@ -81,14 +84,14 @@ class RecommendationServiceTest(TestCase):
             for movie_id in movies:
                 self.assertIsInstance(movie_id, int)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_popular_movies_error(self, mock_get):
         """Test _get_popular_movies with API error"""
         mock_get.side_effect = Exception("API Error")
         movies = RecommendationService._get_popular_movies(limit=10)
         self.assertEqual(movies, [])
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_movie_details_success(self, mock_get):
         """Test get_movie_details with successful API response"""
         mock_response = MagicMock()
@@ -115,7 +118,7 @@ class RecommendationServiceTest(TestCase):
         self.assertEqual(len(movie["genres"]), 2)
         self.assertIn("Drama", movie["genres"])
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_movie_details_cached(self, mock_get):
         """Test that get_movie_details uses cache"""
         mock_response = MagicMock()
@@ -136,7 +139,7 @@ class RecommendationServiceTest(TestCase):
         self.assertEqual(mock_get.call_count, 1)
         self.assertEqual(movie1, movie2)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_movie_details_error(self, mock_get):
         """Test get_movie_details with API error"""
         mock_get.side_effect = Exception("API Error")
@@ -155,7 +158,7 @@ class RecommendationServiceTest(TestCase):
         genre_ids = RecommendationService._get_genre_ids_by_names(["Unknown Genre"])
         self.assertEqual(genre_ids, [])
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_movies_by_genres_success(self, mock_get):
         """Test successful retrieval of movies by genres"""
         # Mock the API response
@@ -180,7 +183,7 @@ class RecommendationServiceTest(TestCase):
             self.assertIsInstance(movies, list)
             self.assertLessEqual(len(movies), 5)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_movies_by_genres_multiple_pages(self, mock_get):
         """Test _get_movies_by_genres with multiple pages"""
         mock_response1 = MagicMock()
@@ -202,7 +205,7 @@ class RecommendationServiceTest(TestCase):
         movies = RecommendationService._get_movies_by_genres([28], limit=30)
         self.assertGreaterEqual(len(movies), 20)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_movies_by_genres_error(self, mock_get):
         """Test _get_movies_by_genres with API error"""
         mock_get.side_effect = Exception("API Error")
@@ -210,7 +213,7 @@ class RecommendationServiceTest(TestCase):
         # Should fallback to popular movies
         self.assertIsInstance(movies, list)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_search_movies_success(self, mock_get):
         """Test search_movies with successful API response"""
         mock_response = MagicMock()
@@ -235,21 +238,21 @@ class RecommendationServiceTest(TestCase):
         self.assertEqual(results[0]["title"], "Fight Club")
         self.assertEqual(results[0]["year"], "1999")
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_search_movies_no_token(self, mock_get):
         """Test search_movies without TMDB token"""
-        with patch.object(RecommendationService, "TMDB_TOKEN", None):
+        with patch.object(TmdbClient, "TMDB_TOKEN", None):
             results = RecommendationService.search_movies("Fight Club")
             self.assertEqual(results, [])
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_search_movies_error(self, mock_get):
         """Test search_movies with API error"""
         mock_get.side_effect = Exception("API Error")
         results = RecommendationService.search_movies("Fight Club")
         self.assertEqual(results, [])
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_similar_movies_success(self, mock_get):
         """Test get_similar_movies with successful API response"""
         # Mock movie details response
@@ -294,7 +297,7 @@ class RecommendationServiceTest(TestCase):
         self.assertGreaterEqual(len(results), 1)
         self.assertEqual(results[0]["tmdb_id"], 551)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_similar_movies_cached(self, mock_get):
         """Test that get_similar_movies uses cache"""
         movie_response = MagicMock()
@@ -315,7 +318,7 @@ class RecommendationServiceTest(TestCase):
         # Should only call API once per endpoint
         self.assertEqual(results1, results2)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_similar_movies_filters_by_genre(self, mock_get):
         """Test that get_similar_movies filters by genre overlap"""
         movie_response = MagicMock()
@@ -364,7 +367,7 @@ class RecommendationServiceTest(TestCase):
         self.assertGreaterEqual(len(results), 1)
         self.assertEqual(results[0]["tmdb_id"], 551)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_similar_movies_filters_by_year(self, mock_get):
         """Test that get_similar_movies filters old movies"""
         movie_response = MagicMock()
@@ -378,7 +381,7 @@ class RecommendationServiceTest(TestCase):
                 {
                     "id": 551,
                     "title": "Old Movie",
-                    "release_date": "1990-01-01",  # Too old
+                    "release_date": "1985-06-01",  # Too old (< 1990 cutoff)
                     "vote_average": 8.0,
                     "vote_count": 500,
                     "genre_ids": [18],
@@ -392,7 +395,7 @@ class RecommendationServiceTest(TestCase):
         # Should filter out old movies
         self.assertEqual(len(results), 0)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_similar_movies_error(self, mock_get):
         """Test get_similar_movies with API error"""
         mock_get.side_effect = Exception("API Error")
@@ -414,7 +417,7 @@ class RecommendationServiceTest(TestCase):
         # Verify cache is cleared
         self.assertIsNone(cache.get(cache_key))
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_solo_deck_new_user(self, mock_get):
         """Test get_solo_deck for new user (no history)"""
         # Mock popular movies API
@@ -426,7 +429,7 @@ class RecommendationServiceTest(TestCase):
         deck = RecommendationService.get_solo_deck(self.user, limit=10)
         self.assertIsInstance(deck, list)
 
-    # @patch("recom_sys_app.services.requests.get")
+    # @patch("recom_sys_app.services.tmdb_client.requests.get")
     # def test_get_solo_deck_returning_user(self, mock_get):
     #     """Test get_solo_deck for returning user (with history)"""
     #     # Create interaction history
@@ -459,7 +462,7 @@ class RecommendationServiceTest(TestCase):
     #     deck = RecommendationService.get_solo_deck(self.user, limit=10)
     #     self.assertIsInstance(deck, list)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_solo_deck_cached(self, mock_get):
         """Test that get_solo_deck uses cache"""
         mock_response = MagicMock()
@@ -475,7 +478,7 @@ class RecommendationServiceTest(TestCase):
         # Should only call API once
         self.assertEqual(deck1, deck2)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_solo_deck_filters_swiped(self, mock_get):
         """Test that get_solo_deck filters already-swiped movies"""
         # Create swiped interaction
@@ -496,7 +499,7 @@ class RecommendationServiceTest(TestCase):
         # Should not include already-swiped movie
         self.assertNotIn(550, deck)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_group_deck_private_group(self, mock_get):
         """Test get_group_deck for private group"""
         group = GroupSession.objects.create(creator=self.user)
@@ -513,7 +516,7 @@ class RecommendationServiceTest(TestCase):
         deck = RecommendationService.get_group_deck(group, limit=10)
         self.assertIsInstance(deck, list)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_group_deck_community_group(self, mock_get):
         """Test get_group_deck for community group"""
         group = GroupSession.objects.create(
@@ -535,7 +538,7 @@ class RecommendationServiceTest(TestCase):
         deck = RecommendationService.get_group_deck(group, limit=10)
         self.assertIsInstance(deck, list)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_group_deck_filters_swiped(self, mock_get):
         """Test that get_group_deck filters already-swiped movies"""
         group = GroupSession.objects.create(creator=self.user)
@@ -562,7 +565,7 @@ class RecommendationServiceTest(TestCase):
         # Should not include already-swiped movie
         self.assertNotIn(550, deck)
 
-    @patch("recom_sys_app.services.requests.get")
+    @patch("recom_sys_app.services.tmdb_client.requests.get")
     def test_get_group_deck_cached(self, mock_get):
         """Test that get_group_deck uses cache"""
         group = GroupSession.objects.create(creator=self.user)

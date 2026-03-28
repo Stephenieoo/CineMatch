@@ -675,3 +675,46 @@ def join_community(request):
 
         traceback.print_exc()
         return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+# ============================================
+# Community Management - Leave
+# ============================================
+
+from django.views.decorators.http import require_POST as _require_POST_comm
+from django.http import JsonResponse as _JsonResponse_comm
+
+
+@login_required
+@_require_POST_comm
+def leave_community(request, group_id):
+    """
+    Leave a community (sets is_active=False).
+    POST /api/communities/<uuid:group_id>/leave/
+    """
+    try:
+        group = get_object_or_404(
+            GroupSession, id=group_id, kind=GroupSession.Kind.COMMUNITY
+        )
+
+        membership = GroupMember.objects.filter(
+            group_session=group, user=request.user, is_active=True
+        ).first()
+
+        if not membership:
+            return _JsonResponse_comm(
+                {"success": False, "message": "You are not a member of this community"},
+                status=404,
+            )
+
+        membership.is_active = False
+        membership.save()
+
+        return _JsonResponse_comm(
+            {"success": True, "message": "You have left the community successfully"}
+        )
+
+    except Exception as e:
+        return _JsonResponse_comm(
+            {"success": False, "message": f"Failed to leave community: {str(e)}"},
+            status=500,
+        )

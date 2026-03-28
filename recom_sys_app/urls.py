@@ -13,11 +13,18 @@ from .views import (
     edit_profile_view,
     set_interaction_view,
     communities_view,
-    leave_group,
-    delete_group,
-    leave_community,
+)
+from .views_group import leave_group, delete_group, create_group, join_group, get_group_details, group_lobby
+from .views_community import leave_community
+from .views_movie import (
     get_user_region_api,
     set_user_region_api,
+    movie_search_view,
+    search_movies_api,
+    autocomplete_movies_api,
+    get_similar_movies_api,
+    movie_details_view,
+    search_movies_view,
 )
 from .views_auth import signup_view
 from .views_group import (
@@ -90,7 +97,7 @@ urlpatterns = [
     ),
     # ==================== GROUP MATCHING - PAGE VIEWS ====================
     # Group Lobby (Original)
-    path("group/<uuid:group_id>/", views.group_lobby, name="group_lobby"),
+    path("group/<uuid:group_id>/", group_lobby, name="group_lobby"),
     # Group Room (existing, using group_code)
     path("groups/<str:group_code>/room/", group_room_view, name="group_room"),
     # Group Swipe Card Page (New)
@@ -109,16 +116,16 @@ urlpatterns = [
     path("solo/genres/", views_solo.solo_genre_selection, name="solo_genre_selection"),
     path("solo/deck/", views_solo.solo_deck_view, name="solo_deck"),
     # ==================== MOVIE SEARCH - FIND SIMILAR ====================
-    path("search/", views.movie_search_view, name="movie_search"),
-    path("api/search/movies/", views.search_movies_api, name="api_search_movies"),
+    path("search/", movie_search_view, name="movie_search"),
+    path("api/search/movies/", search_movies_api, name="api_search_movies"),
     path(
         "api/search/autocomplete/",
-        views.autocomplete_movies_api,
+        autocomplete_movies_api,
         name="api_autocomplete_movies",
     ),
     path(
         "api/movies/<int:tmdb_id>/similar/",
-        views.get_similar_movies_api,
+        get_similar_movies_api,
         name="api_similar_movies",
     ),
     # Solo Mode API Endpoints
@@ -133,9 +140,9 @@ urlpatterns = [
     ),
     # ==================== GROUP MATCHING - API ENDPOINTS ====================
     # Create and join groups (existing ones)
-    path("api/groups", views.create_group, name="create_group"),
-    path("api/groups/join", views.join_group, name="join_group"),
-    path("api/groups/<uuid:group_id>", views.get_group_details, name="group_details"),
+    path("api/groups", create_group, name="create_group"),
+    path("api/groups/join", join_group, name="join_group"),
+    path("api/groups/<uuid:group_id>", get_group_details, name="group_details"),
     # Group management - leave and delete
     path("api/groups/<uuid:group_id>/leave/", leave_group, name="leave_group"),
     path("api/groups/<uuid:group_id>/delete/", delete_group, name="delete_group"),
@@ -211,17 +218,12 @@ urlpatterns = [
 ]
 
 # ==================== OPTIONAL HELPER ROUTES ====================
-# Uncomment if you have these views
-try:
-    urlpatterns += [
-        path("", views.home_view, name="home"),
-        path("stats/", views.user_stats_view, name="user_stats"),
-        path("movie/<int:tmdb_id>/", views.movie_details_view, name="movie_details"),
-        path("search/", views.search_movies_view, name="search_movies"),
-    ]
-except AttributeError:
-    # Views don't exist yet
-    pass
+urlpatterns += [
+    path("", views.home_view, name="home"),
+    path("stats/", views.user_stats_view, name="user_stats"),
+    path("movie/<int:tmdb_id>/", movie_details_view, name="movie_details"),
+    path("search/", search_movies_view, name="search_movies"),
+]
 
 # ==================== REST API ROUTES ====================
 if api_views:

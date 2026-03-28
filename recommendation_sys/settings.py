@@ -383,7 +383,13 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 # Use Redis if REDIS_HOST is set to a real Redis server, otherwise use InMemory
 # IMPORTANT: For production, use ElastiCache Redis with "cluster mode disabled"
 # ElastiCache Serverless and cluster-enabled Redis don't support Lua scripts used by channels-redis
-USE_REDIS_CHANNELS = os.getenv("USE_REDIS_CHANNELS", "False") == "True"
+# Auto-enable Redis channel layer when REDIS_HOST points to a real server
+# (e.g. AWS ElastiCache in production). This ensures WebSocket messages are
+# shared across all EC2 instances when the service scales out horizontally.
+_redis_is_remote = REDIS_HOST not in ("localhost", "127.0.0.1", "")
+USE_REDIS_CHANNELS = (
+    os.getenv("USE_REDIS_CHANNELS", "False") == "True" or _redis_is_remote
+)
 
 if USE_REDIS_CHANNELS:
     CHANNEL_LAYERS = {
