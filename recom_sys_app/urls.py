@@ -14,7 +14,21 @@ from .views import (
     set_interaction_view,
     communities_view,
 )
-from .views_group import leave_group, delete_group, create_group, join_group, get_group_details, group_lobby
+from .views_group import (
+    leave_group, delete_group, create_group, join_group, get_group_details, group_lobby,
+)
+from .views_group_swipe import (
+    get_group_deck,
+    swipe_like,
+    swipe_dislike,
+    group_room_view,
+    group_deck_view,
+    get_group_matches,
+    clear_group_swipes,
+    check_completion_status,
+    get_final_matches,
+)
+from .views_group_chat import get_chat_history, send_chat_message
 from .views_community import leave_community
 from .views_movie import (
     get_user_region_api,
@@ -27,16 +41,6 @@ from .views_movie import (
     search_movies_view,
 )
 from .views_auth import signup_view
-from .views_group import (
-    get_group_deck,
-    swipe_like,
-    swipe_dislike,
-    group_room_view,
-    group_deck_view,  # New: Swipe Card Page View
-    get_group_matches,  # New: Retrieve matching records
-    clear_group_swipes,
-)
-from . import views_group
 from . import views  # For additional helper views
 
 try:
@@ -63,12 +67,12 @@ if api_views:
 urlpatterns = [
     path(
         "api/groups/<str:group_code>/chat/history/",
-        views_group.get_chat_history,
+        get_chat_history,
         name="get_chat_history",
     ),
     path(
         "api/groups/<str:group_code>/chat/send/",
-        views_group.send_chat_message,
+        send_chat_message,
         name="send_chat_message",
     ),
     # ==================== AUTHENTICATION ====================
@@ -167,12 +171,12 @@ urlpatterns = [
     # GROUP MATCHING
     path(
         "api/groups/<str:group_code>/completion-status/",
-        views_group.check_completion_status,
+        check_completion_status,
         name="check_completion_status",
     ),
     path(
         "api/groups/<str:group_code>/final-matches/",
-        views_group.get_final_matches,
+        get_final_matches,
         name="get_final_matches",
     ),
     path(
